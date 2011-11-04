@@ -2,14 +2,12 @@
 -- different types of variable we can have.
 module Zeno.Var (
   ZVar (..), ZVarClass (..), HasSources (..),
-  ZDataType, ZType, ZTerm, ZTerm, ZAlt, 
-  ZBinding, ZBindings, ZClause, ZTermSubstitution,
-  ZEquality, ZHypothesis, ZQuantified, ZProgram,
-  CriticalPath, CriticalTerm, 
+  ZDataType, ZType, ZTerm, ZAlt,
+  ZClause, ZTermSubstitution, ZEquality,
+  CriticalPath, CriticalPair, 
   substituteTakingSources,
   defaultVarClass, isConstructorVar, isConstructorTerm,
-  isUniversalVar, isDefinedVar,
-  universalVariables, freeUniversalVariables,
+  isUniversalVar, universalVariables,
   freshVariable, isVariableFunApp,
 ) where
 
@@ -25,6 +23,7 @@ import Zeno.Unification
 import Zeno.Traversing
 
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 type ZDataType = DataType ZVar
 type ZType = Type ZDataType
@@ -64,33 +63,9 @@ data ZVarClass
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType
   typeOf = varType
-  
-instance Typed ZTerm where
-  type SimpleType ZTerm = ZDataType
 
-  typeOf (Var x) = typeOf x
-  typeOf (Fix f _) = typeOf f
-  typeOf (Cse _ _ alts) = unifyMany (map typeOf alts)
-  typeOf (Lam x e) = Type e_vars (FunType x_t e_t)
-    where
-    Type x_vars x_t = typeOf x     
-    Type e_vars e_t = 
-      assert (Set.null x_vars) (typeOf t)
-   
-      
-  typeOf expr@(App lhs rhs) = updateType type_sub lhs_res
-    where
-    FunType lhs_arg lhs_res = snd (flattenForAllType (getType lhs))
-    type_sub = case unify lhs_arg (getType rhs) of
-      Unifier sub -> sub
-      NoUnifier -> error
-        $ "Could not unify types in term application."
-        ++ "\n" ++ showTyped lhs
-        ++ "\nand"
-        ++ "\n" ++ showTyped rhs
-        
 defaultVarClass :: ZVarClass
-defaultVarClass = UniversalVar []
+defaultVarClass = UniversalVar mempty
 
 isConstructorVar :: ZVar -> Bool
 isConstructorVar (varClass -> ConstructorVar {}) = True
@@ -103,10 +78,6 @@ isConstructorTerm =
 isUniversalVar :: ZVar -> Bool
 isUniversalVar (varClass -> UniversalVar {}) = True
 isUniversalVar _ = False
-
-isDefinedVar :: ZVar -> Bool
-isDefinedVar (varClass -> DefinedVar {}) = True
-isDefinedVar _ = False
 
 isVariableFunApp :: ZTerm -> Bool
 isVariableFunApp term@(termFunction -> Just fun) = 
@@ -121,10 +92,6 @@ freshVariable (ZVar id _ typ cls) = do
 universalVariables :: Foldable f => f ZVar -> Set ZVar
 universalVariables = Set.filter isUniversalVar . Set.fromList . toList
 
-freeUniversalVariables :: (WithinTraversable ZTerm (f ZVar), Foldable f) =>
-  f ZVar -> Set ZVar
-freeUniversalVariables = Set.filter isUniversalVar . freeVariables
-
 class HasSources a where
   allSources :: a -> (Set CriticalPath)
   addSources :: (Set CriticalPath) -> a -> a
@@ -132,14 +99,14 @@ class HasSources a where
   
 instance HasSources ZVar where
   allSources (varClass -> UniversalVar srs) = srs
-  allSources _ = []
+  allSources _ = mempty
 
   addSources more var@(varClass -> UniversalVar existing) =
     var { varClass = UniversalVar (more ++ existing) }
   addSources _ var = var
   
   clearSources var@(varClass -> UniversalVar _) =
-    var { varClass = UniversalVar [] }
+    var { varClass = UniversalVar mempty }
   clearSources var = var
   
 instance (Foldable f, Functor f) => HasSources (f ZVar) where

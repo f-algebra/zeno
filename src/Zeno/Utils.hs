@@ -283,6 +283,10 @@ shuffle xs gen = runST $ do
     newArray :: Int -> [a] -> ST s (STArray s Int a)
     newArray n xs =  newListArray (1,n) xs
     
+takeLast :: [a] -> ([a], a)
+takeLast [x] = ([], x)
+takeLast (x:xs) = first (x:) (takeLast xs)
+
 class JSON a where
   json :: a -> String
   

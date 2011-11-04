@@ -1,9 +1,10 @@
 module Zeno.Parsing.Lisp (
-  Lisp (..), parse,
+  Lisp (..), parse, fromLN
 ) where
 
 import Prelude ()
 import Zeno.Prelude hiding ( many, (<|>) )
+import Zeno.Traversing
 
 import Text.Parsec hiding ( State, parse )
 
@@ -21,11 +22,9 @@ parse text = case runP lispParser () "zeno" text of
   Left err -> error (show err)
   
 nameChars :: Parsec String () Char
-nameChars = foldr (\c p -> char c <|> p) alphaNum chars
-  where chars = ['-', '<', '>', '.', ',', '?', 
-                 '#', '+', '*', '&', '|', '%', 
-                 '$', '£', '"', '\'', '^', ':', ';']
-       
+nameChars = alphaNum <|> oneOf chars
+  where chars = "-<>.,?#+*&|%$£^:;~/\\!=@[]'"
+  
 lispParser :: Parsec String () Lisp
 lispParser = LL <$> many (spaces *> lispList <* spaces)
   where
@@ -35,3 +34,8 @@ lispParser = LL <$> many (spaces *> lispList <* spaces)
   
 fromLN :: Lisp -> String
 fromLN (LN name) = name
+
+instance WithinTraversable Lisp Lisp where
+  mapWithinM f (LL ls) = 
+    f =<< LL `liftM` mapM (mapWithinM f) ls
+  mapWithinM f ls = f ls

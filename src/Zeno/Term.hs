@@ -1,5 +1,7 @@
+{-# LANGUAGE UndecidableInstances #-}
 module Zeno.Term (
-  Term (..), TermSubstitution, HasVariables (..),
+  Term (..), Alt (..),
+  TermSubstitution,
   isVar, fromVar, isApp, isCse, isLam, isFix,
   flattenApp, unflattenApp, termFunction,
   flattenLam, unflattenLam, isOperator
@@ -10,6 +12,7 @@ import Zeno.Prelude
 import Zeno.Id
 import Zeno.Traversing
 import Zeno.Utils
+import Zeno.Type
 import Zeno.Unification
 
 import qualified Data.Map as Map
@@ -22,8 +25,7 @@ data Term a
   | Fix !a !(Term a)
   | Cse     { caseOfId :: !Id,
               caseOfTerm :: !(Term a),
-              caseOfAlts :: ![Alt a],
-              caseOfDefault :: !(Maybe (Term a)) }
+              caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 data Alt a
@@ -34,23 +36,23 @@ data Alt a
   
 type TermSubstitution a = Substitution (Term a) (Term a)
 
-class HasVariables f where
-  freeVariables :: Ord a => f a -> Set a 
-
-instance HasVariables Term where
-  freeVariables (App e1 e2) = freeVariables e1 ++ freeVariables e2
-  freeVariables (Var x) = Set.singleton x
-  freeVariables (Lam x e) = Set.delete x (freeVariables e) 
-  freeVariables (Fix f e) = Set.delete f (freeVariables e)
-  freeVariables cse@(Cse {}) =
-    freeVariables (caseOfTerm cse) ++ defVars ++ altVars
-    where
-    altVars = caseOfAlts cse |> map freeVariables |> Set.unions
-    defVars = caseOfDefault cse |> map freeVariables |> fromMaybe mempty
+instance HasVariables (Term a) where
+  type Var (Term a) = a
   
-instance HasVariables Alt where
-  freeVariables (Alt _ vars e) = 
-    Set.difference (freeVariables e) (Set.fromList vars)
+  freeVars (App e1 e2) = freeVars e1 ++ freeVars e2
+  freeVars (Var x) = Set.singleton x
+  freeVars (Lam x e) = Set.delete x (freeVars e) 
+  freeVars (Fix f e) = Set.delete f (freeVars e)
+  freeVars cse@(Cse {}) =
+    freeVars (caseOfTerm cse) ++ altVars
+    where
+    altVars = caseOfAlts cse |> map freeVars |> Set.unions
+  
+instance HasVariables (Alt a) where
+  type Var (Alt a) = a
+  
+  freeVars (Alt _ vars e) = 
+    Set.difference (freeVars e) (Set.fromList vars)
 
 isVar :: Term a -> Bool
 isVar (Var {}) = True
@@ -118,10 +120,9 @@ instance Ord a => Unifiable (Term a) where
 instance WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
-  mapWithinM f (Cse id lhs alts def) =
+  mapWithinM f (Cse id lhs alts) =
     f =<< return (Cse id) `ap` mapWithinM f lhs 
                           `ap` mapM (mapWithinM f) alts
-                          `ap` mapM (mapWithinM f) def
   mapWithinM f (Lam var rhs) =
     f =<< return (Lam var) `ap` mapWithinM f rhs
   mapWithinM f (Fix var rhs) =
@@ -132,6 +133,20 @@ instance WithinTraversable (Term a) (Term a) where
 instance WithinTraversable (Term a) (Alt a) where
   mapWithinM f (Alt con binds rhs) = 
     return (Alt con binds) `ap` mapWithinM f rhs
+    
+instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
+  type SimpleType (Term a) = SimpleType a
+
+  typeOf (Var x) = typeOf x
+  typeOf (Fix f _) = typeOf f
+  typeOf cse@(Cse {}) = typeOf . altTerm . head  .caseOfAlts $ cse
+  typeOf (Lam x e) = FunType (typeOf x) (typeOf e)
+  typeOf (App e1 e2)
+    | typeOf e2 /= t1a = error "Argument types do not match"
+    | otherwise = t1r
+    where
+    FunType t1a t1r = typeOf e1
+
   
 isOperator :: String -> Bool
 isOperator | error "find where isOperator should go" = any (not . isNormalChar)

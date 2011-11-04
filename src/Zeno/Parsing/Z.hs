@@ -1,4 +1,5 @@
 module Zeno.Parsing.Z (
+  parse
 ) where
 
 import Prelude ()
@@ -6,113 +7,139 @@ import Zeno.Prelude
 import Zeno.Utils
 import Zeno.Core
 
-import Zeno.Parsing.Lisp ( Lisp )
-import qualified Zeno.Parsing.Lisp as Lisp
+import Zeno.Parsing.Lisp ( Lisp (..) )
 
+import qualified Zeno.Parsing.Lisp as Lisp
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-parse :: String -> State ZTheory ()
-parse text = runReaderT (parseTheory (Lisp.parse text)) mempty 
+type Parser = State ZTheory
+type TermParser = ReaderT (Map String ZTerm) Parser
 
-type Parser = ReaderT (Map String TypeVar) (State ZTheory)
+parse :: String -> Parser ()
+parse text = parseTheory (Lisp.parse text)
 
-newTypeVars :: String -> Parser
+runTermParser :: TermParser a -> Parser a
+runTermParser = flip runReaderT mempty
 
+lookupType :: String -> Parser ZType
+lookupType name = do
+  dt_lookup <- lookupDataType name
+  case dt_lookup of
+    Just dtype -> return (VarType dtype)
+    Nothing -> error $ "Type not found: " ++ name
 
-newTypeVar :: MonadState ParserState m => String -> m TypeVar
-newTypeVar name = do
-  new_id <- newIdS
-  let tvar = TypeVar new_id (Just name)
-  addTypeVar tvar
-  return tvar
+lookupDef :: String -> TermParser ZTerm
+lookupDef name = do
+  mby_local <- asks (Map.lookup name)
+  case mby_local of
+    Just def -> return def
+    Nothing -> do
+      mby_global <- lookupDefinition name
+      case mby_global of
+        Just def -> return def
+        Nothing -> error $ "Variable not found: " ++ name
+        
+localDefinition :: String -> ZTerm -> TermParser a -> TermParser a
+localDefinition name term = local (Map.insert name term)
+
+transformZLisp :: Lisp -> Lisp
+transformZLisp (LL (LN "lam":rest)) 
+  | length rest > 2 = foldr foldLam term typed_vars
   where
-  addTypeVar :: TypeVar -> m ()
-  addTypeVar tvar = modify $ \s -> 
-    s { parsing_tvars = Map.insert name tvar (parsing_tvars s) }
-    where Just name = typevarName tvar
+  (typed_vars, term) = takeLast rest
+  foldLam typed_var term = LL [LN "lam", typed_var, term]
+transformZLisp (LL (LN "defun":typed_name@(LL [LN name, type_l]):rest)) = 
+  LL [LN "def", LN name, fixed]
+  where
+  var_types = case type_l of
+    LN _ -> []
+    LL types -> butlast types
     
-lookupTypeVar :: MonadState ParserState m => String -> m (Maybe TypeVar)
-lookupTypeVar name = gets (Map.lookup name . parsing_tvars) 
+  (vars, term) = takeLast rest 
+  typed_vars = zipWith (\var typ -> LL [var, typ]) vars var_types
+  lambdas = transformZLisp (LL ((LN "lam":typed_vars) ++ [term]))
+  fixed = LL [LN "fix", typed_name, lambdas]
+transformZLisp lisp = lisp
 
-knownTypeVars :: MonadState ParserState m => m (Set TypeVar)
-knownTypeVars = gets (Set.fromList . Map.elems . parsing_tvars)
+parseTheory :: Lisp -> Parser ()
+parseTheory (LL decls) = 
+  mapM_ parseTopLevel . map (mapWithin transformZLisp) $ decls
 
-fl_theory :: FromLisp ()
-fl_theory (LL decls) = mapM_ fl_toplevel decls
-
-fl_toplevel :: FromLisp ()
-fl_toplevel (LL ((LN "defdata"):type_def:l_cons)) = localDefs $ do
+parseTopLevel :: Lisp -> Parser ()
+parseTopLevel (LL [LN "def", LN name, def]) = do
+  term <- runTermParser (parseTerm def)
+  addDefinition name term
+parseTopLevel (LL ((LN "type"):(LN type_name):l_cons)) = do
   new_id <- newIdS
-  new_tvars <- mapM newTypeVar type_args 
   rec let new_dtype = DataType new_id type_name cons
-      let res_type = AppType new_dtype (map VarType new_tvars)
       addDataType new_dtype
-      cons <- mapM (fl_con res_type) l_cons
+      cons <- mapM (parseCon (VarType new_dtype)) l_cons
   return ()
   where
-  (type_name, type_args) = 
-    case type_def of
-      LN name        -> (name, [])
-      LL (name:args) -> (fromLN name, map fromLN args)
-      
-  fl_con :: EInnerType -> FromLisp EVar
-  fl_con res_type l_con = do
-    args <- mapM fl_innerType l_args
-    
-    let arg_vars = concatMap typeVars args
-        poly_vars = typeVars res_type
-        valid_vars = Set.null (arg_vars `Set.difference` poly_vars)
-    when (not valid_vars) 
-      $ fail "Undeclared polymorphic variables in datatype definition."
-      
+  parseCon :: ZType -> Lisp -> Parser ZVar
+  parseCon res_type l_con = do
     con_id <- newIdS
-    let con_itype = foldFunType (args ++ [res_type])
-        con_type = Type poly_vars con_itype
-        new_con = EVar con_id (Just con_name) con_type ConstructorVar
-    addTerm con_name (Var new_con)
+    args <- mapM parseType l_args
+    let con_type = unflattenFunType (args ++ [res_type])
+        new_con = ZVar con_id (Just con_name) con_type ConstructorVar
+    addDefinition con_name (Var new_con)
     return new_con    
     where
     (con_name, l_args) = case l_con of
       LN con_name -> (con_name, [])
       LL ((LN con_name):l_args) -> (con_name, l_args)
+parseTopLevel other = 
+  error $ "Top level statement not recognized: " ++ show other
       
-   
-fl_type :: FromLisp EType 
-fl_type l_inner_type = do
-  inner_type <- fl_innerType l_inner_type
-  known_vars <- knownTypeVars
-  let free_vars = typeVars inner_type `Set.difference` known_vars
-  return (Type free_vars inner_type)
-
+parseType :: Lisp -> Parser ZType
+parseType (LN name) = lookupType name
+parseType (LL l_types) = do
+  types <- mapM parseType l_types
+  return (unflattenFunType types)
   
-fl_innerType :: FromLisp EInnerType
-fl_innerType (LN name) = do
-  dt_lookup <- lookupDataType name
-  tv_lookup <- lookupTypeVar name
-  case dt_lookup of
-    Just dtype -> return (AppType dtype [])
-    Nothing -> case tv_lookup of
-      Just tvar -> return (VarType tvar)
-      Nothing -> VarType <$> newTypeVar name
+parseTerm :: Lisp -> TermParser ZTerm
+parseTerm (LN name) = lookupDef name
+parseTerm (LL [LN "let", LL [LN name, l_term], l_in]) = do
+  term <- parseTerm l_term
+  localDefinition name term (parseTerm l_in)
+parseTerm (LL [LN "fix", LL [LN name, l_type], l_term]) = do 
+  fix_type <- lift (parseType l_type)
+  var_id <- newIdS
+  let fix_var = ZVar var_id (Just name) fix_type FixedVar
+  term <- localDefinition name (Var fix_var) (parseTerm l_term)
+  return (Fix fix_var term)
+parseTerm (LL [LN "lam", LL [LN name, l_type], l_term]) = do
+  var_type <- lift (parseType l_type)
+  var_id <- newIdS
+  let lam_var = ZVar var_id (Just name) var_type (UniversalVar mempty)
+  term <- localDefinition name (Var lam_var) (parseTerm l_term)
+  return (Lam lam_var term)
+parseTerm (LL (LN "case":l_term:l_alts)) = do
+  cse_id <- newIdS
+  term <- parseTerm l_term
+  alts <- mapM parseAlt l_alts
+  return (Cse cse_id term alts)
+  where
+  parseAlt (LL [l_pattern, l_term]) = do
+    Var con_var <- lookupDef con_name
+    let (var_types, con_type) = varType con_var |> flattenFunType |> takeLast 
+    vars <- zipWithM makeVar var_names var_types
+    term <- foldr localVar (parseTerm l_term) (var_names `zip` vars)
+    return (Alt con_var vars term)
+    where
+    (con_name, var_names) = case l_pattern of
+      LN name -> (name, [])
+      LL (LN name:names_l) -> (name, map Lisp.fromLN names_l)
+    
+    makeVar :: String -> ZType -> TermParser ZVar
+    makeVar var_name var_type = do
+      var_id <- newIdS
+      return $ ZVar var_id (Just var_name) var_type (UniversalVar mempty)
+      
+    localVar :: (String, ZVar) -> TermParser a -> TermParser a
+    localVar (name, var) = localDefinition name (Var var)
   
-fl_innerType (LL ((LN "->"):l_types)) = do
-  types <- mapM fl_innerType l_types
-  return (foldFunType types)
-  
-fl_innerType (LL ((LN dtype_name):l_args)) = do
-  types <- mapM fl_innerType l_args
-  Just dtype <- lookupDataType dtype_name
-  return (AppType dtype types)
-  
-fl_term :: FromLisp (ETerm, EType)
-fl_term (LN name) = do
-  term <- fromJust <$> lookupTerm name
-  return (term, typeOf term)
-fl_term (LL [(LN "lam"), 
-             (LL [LN var_name, l_var_type]), l_term]) = localDefs $ do
-  var_itype <- fl_innerType l_var_type
-  
-  
-  
+parseTerm (LL l_terms) = 
+  unflattenApp <$> mapM parseTerm l_terms
   

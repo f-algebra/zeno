@@ -20,5 +20,3 @@ instance Eq (DataType a) where
 instance Ord (DataType a) where
   compare = compare `on` dataTypeId
 
-
-

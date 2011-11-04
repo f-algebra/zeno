@@ -1,5 +1,6 @@
 module Zeno.Traversing (
-  WithinTraversable (..), Substitution,
+  WithinTraversable (..), HasVariables (..),
+  Substitution,
   substitute, replaceWithin, replaceManyWithin, 
   withinList, strictlyWithinList,
   contains, containsStrictly,
@@ -69,4 +70,9 @@ removeSubsets sets = filter (not . isSubset) sets
 removeSupersets :: (WithinTraversable a a, Eq a) => [a] -> [a]
 removeSupersets sets = filter (not . isSuperset) sets
   where isSuperset set = any (containsStrictly set) sets
+  
+-- |This is here for want of a better place for it
+class HasVariables f where
+  type Var f
+  freeVars :: Ord (Var f) => f -> Set (Var f) 
   
