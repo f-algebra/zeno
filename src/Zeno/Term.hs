@@ -3,18 +3,19 @@ module Zeno.Term (
   Term (..), Alt (..),
   TermSubstitution,
   isVar, fromVar, isApp, isCse, isLam, isFix,
-  flattenApp, unflattenApp, termFunction,
-  flattenLam, unflattenLam, isOperator
+  flattenApp, unflattenApp, flattenLam, unflattenLam,
+  function
 ) where
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Id
+import Zeno.Name ( Name )
 import Zeno.Traversing
 import Zeno.Utils
-import Zeno.Type
+import Zeno.Type ( Type, Typed (..) )
 import Zeno.Unification
 
+import qualified Zeno.Type as Type
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -23,7 +24,7 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { caseOfId :: !Id,
+  | Cse     { caseOfName :: !Name,
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
@@ -77,9 +78,9 @@ isFix _ = False
 fromVar :: Term a -> a
 fromVar (Var v) = v
 
-termFunction :: Term a -> Maybe a
-termFunction (flattenApp -> (Var x : _)) = Just x
-termFunction _ = Nothing
+function :: Term a -> Maybe a
+function (flattenApp -> (Var x : _)) = Just x
+function _ = Nothing
 
 flattenApp :: Term a -> [Term a]
 flattenApp (App lhs rhs) = flattenApp lhs ++ [rhs]
@@ -140,12 +141,12 @@ instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
   typeOf (Var x) = typeOf x
   typeOf (Fix f _) = typeOf f
   typeOf cse@(Cse {}) = typeOf . altTerm . head  .caseOfAlts $ cse
-  typeOf (Lam x e) = FunType (typeOf x) (typeOf e)
+  typeOf (Lam x e) = Type.Fun (typeOf x) (typeOf e)
   typeOf (App e1 e2)
     | typeOf e2 /= t1a = error "Argument types do not match"
     | otherwise = t1r
     where
-    FunType t1a t1r = typeOf e1
+    Type.Fun t1a t1r = typeOf e1
 
   
 isOperator :: String -> Bool

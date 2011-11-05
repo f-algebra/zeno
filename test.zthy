@@ -1,0 +1,10 @@
+(type nat 0 (S nat))
+
+(fun (+ (nat nat nat)) x y 
+  (case + x
+    (0 y)
+    ((S x') (S (+ x' y)))))
+    
+(lemma <=trn 
+  (clause (all (x nat) (y nat) (z nat)) 
+    (<= x y) (<= y z) (<= x z)))

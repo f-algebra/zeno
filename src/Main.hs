@@ -6,7 +6,9 @@ import Zeno.Core
 import Zeno.Parsing.Z
 import Zeno.Show
 
+import qualified Zeno.Theory as Thy
+
 main :: IO ()
 main = do 
   zthy <- readFile "test.zthy"
-  print $ flip execState emptyTheory $ parse zthy
+  print $ flip execState Thy.empty $ parse zthy

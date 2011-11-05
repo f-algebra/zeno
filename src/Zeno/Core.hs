@@ -3,34 +3,28 @@
 -- in particular.
 module Zeno.Core (
   module Zeno.Type,
-  module Zeno.DataType,
-  module Zeno.Clause,
   module Zeno.Var,
-  module Zeno.Term,
-  module Zeno.Id,
+  module Zeno.Name,
   module Zeno.Utils,
   module Zeno.Theory,
   module Zeno.Unification,
   module Zeno.Traversing,
-  module Zeno.Flags,
+  module Zeno.Show
 ) where
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Type
-import Zeno.Term
-import Zeno.Clause
-import Zeno.Var
-import Zeno.DataType
-import Zeno.Id
+import Zeno.Var ( ZVar, ZDataType, ZAlt, ZTerm, 
+                  ZClause, ZTermSubstitution, ZEquation,
+                  CriticalPath, CriticalPair,
+                  ZType, ZVarSort, HasSources (..) )
+import Zeno.Name ( Name, Unique, UniqueGen (..) )
+import Zeno.Type ( Typed (..) )
 import Zeno.Utils
 import Zeno.Traversing
 import Zeno.Unification
-import Zeno.Theory
-import Zeno.Flags
-
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+import Zeno.Theory ( ZTheory )
+import Zeno.Show
 
 {-
 

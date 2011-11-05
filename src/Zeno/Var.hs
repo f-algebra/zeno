@@ -1,27 +1,29 @@
 -- |Here we have the representation of variables inside Zeno; see 'ZVarClass' for the
 -- different types of variable we can have.
 module Zeno.Var (
-  ZVar (..), ZVarClass (..), HasSources (..),
+  ZVar (name, sort), ZVarSort (..), HasSources (..),
   ZDataType, ZType, ZTerm, ZAlt,
-  ZClause, ZTermSubstitution, ZEquality,
+  ZClause, ZTermSubstitution, ZEquation,
   CriticalPath, CriticalPair, 
   substituteTakingSources,
-  defaultVarClass, isConstructorVar, isConstructorTerm,
-  isUniversalVar, universalVariables,
-  freshVariable, isVariableFunApp,
+  isConstructor, isConstructorTerm,
+  isUniversal, universalVariables,
+  new, declare, invent, clone
 ) where
 
 import Prelude ()
-import Zeno.Prelude
-import Zeno.DataType
-import Zeno.Type
-import Zeno.Id
-import Zeno.Term
-import Zeno.Clause
+import Zeno.Prelude hiding ( sort )
+import Zeno.DataType ( DataType )
+import Zeno.Type ( Type, Typed (..) )
+import Zeno.Name ( Unique, Name, UniqueGen )
+import Zeno.Term ( Term, Alt, TermSubstitution )
+import Zeno.Clause ( Clause, Equation )
 import Zeno.Utils
 import Zeno.Unification
 import Zeno.Traversing
 
+import qualified Zeno.Name as Name
+import qualified Zeno.Term as Term
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -30,67 +32,63 @@ type ZType = Type ZDataType
 type ZTerm = Term ZVar
 type ZAlt = Alt ZVar
 type ZClause = Clause ZVar
-type ZEquality = Equality ZVar
+type ZEquation = Equation ZVar
 type ZTermSubstitution = TermSubstitution ZVar
 
 data ZVar
-  = ZVar        { varId :: !Id,
-  
-                  varName :: !(Maybe String),
-                  
-                  -- |The variable's 'Type'. This is non-strict so that we can tie the
-                  -- knot for "variables have types which are made of data-types that
-                  -- have constructors which are variables".
+  = Var         { name :: !Name,
                   varType :: ZType,
-                  
-                  varClass :: !ZVarClass }
+                  sort :: !ZVarSort }
 
 instance Eq ZVar where
-  (==) = (==) `on` varId
+  (==) = (==) `on` name
   
 instance Ord ZVar where
-  compare = compare `on` varId
+  compare = compare `on` name
   
-type CriticalPath = [Id]
+type CriticalPath = [Name]
 type CriticalPair = (ZTerm, CriticalPath)
 
--- |The different /classes/ of variable within Zeno.
-data ZVarClass
-  = UniversalVar    { varSources :: !(Set CriticalPath) }
-  | ConstructorVar
-  | FixedVar
+-- |The different /sorts/ of variable within Zeno.
+data ZVarSort
+  = Universal     { sources :: !(Set CriticalPath) }
+  | Constructor
+  | Fixed
 
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType
   typeOf = varType
 
-defaultVarClass :: ZVarClass
-defaultVarClass = UniversalVar mempty
-
-isConstructorVar :: ZVar -> Bool
-isConstructorVar (varClass -> ConstructorVar {}) = True
-isConstructorVar _ = False
+isConstructor :: ZVar -> Bool
+isConstructor (sort -> Constructor {}) = True
+isConstructor _ = False
 
 isConstructorTerm :: ZTerm -> Bool
 isConstructorTerm = 
-  fromMaybe False . fmap isConstructorVar . termFunction 
+  fromMaybe False . fmap isConstructor . Term.function 
 
-isUniversalVar :: ZVar -> Bool
-isUniversalVar (varClass -> UniversalVar {}) = True
-isUniversalVar _ = False
+isUniversal :: ZVar -> Bool
+isUniversal (sort -> Universal {}) = True
+isUniversal _ = False
 
-isVariableFunApp :: ZTerm -> Bool
-isVariableFunApp term@(termFunction -> Just fun) = 
-  isApp term && isUniversalVar fun
-isVariableFunApp _ = False
+new :: (MonadState g m, UniqueGen g) => 
+  Maybe String -> ZType -> ZVarSort -> m ZVar
+new label typ srt = do
+  name <- Name.new label
+  return (Var name typ srt)
+  
+declare :: (MonadState g m, UniqueGen g) => 
+  String -> ZType -> ZVarSort -> m ZVar
+declare = new . Just  
+  
+invent :: (MonadState g m, UniqueGen g) => ZType -> ZVarSort -> m ZVar
+invent = new Nothing
 
-freshVariable :: (MonadState s m, IdCounter s) => ZVar -> m ZVar
-freshVariable (ZVar id _ typ cls) = do
-  new_id <- newIdS
-  return (ZVar new_id Nothing typ cls)
-      
+clone :: (MonadState g m, UniqueGen g) => ZVar -> m ZVar
+clone var = invent (varType var) (sort var)
+
 universalVariables :: Foldable f => f ZVar -> Set ZVar
-universalVariables = Set.filter isUniversalVar . Set.fromList . toList
+universalVariables = Set.filter isUniversal . Set.fromList . toList
 
 class HasSources a where
   allSources :: a -> (Set CriticalPath)
@@ -98,15 +96,15 @@ class HasSources a where
   clearSources :: a -> a
   
 instance HasSources ZVar where
-  allSources (varClass -> UniversalVar srs) = srs
+  allSources (sort -> Universal srs) = srs
   allSources _ = mempty
 
-  addSources more var@(varClass -> UniversalVar existing) =
-    var { varClass = UniversalVar (more ++ existing) }
+  addSources more var@(sort -> Universal existing) =
+    var { sort = Universal (more ++ existing) }
   addSources _ var = var
   
-  clearSources var@(varClass -> UniversalVar _) =
-    var { varClass = UniversalVar mempty }
+  clearSources var@(sort -> Universal _) =
+    var { sort = Universal mempty }
   clearSources var = var
   
 instance (Foldable f, Functor f) => HasSources (f ZVar) where

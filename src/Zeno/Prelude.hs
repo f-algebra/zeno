@@ -43,7 +43,7 @@ import Prelude hiding ( mapM, foldl, foldl1, mapM_, minimum, maximum, sequence_,
   notElem, or, concatMap, sum, (++), map )
 
 import Control.Arrow ( (>>>), (<<<), (&&&), (***), first, second )
-import Control.Applicative
+import Control.Applicative hiding ( empty )
 import Control.Monad ( liftM, ap, replicateM, 
   zipWithM, filterM, when, unless, guard, (>=>), MonadPlus (..) )
 import Control.Monad.Trans ( MonadTrans (..), lift, liftIO )

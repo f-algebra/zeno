@@ -4,19 +4,15 @@ module Zeno.DataType (
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Id
-import Zeno.Type
+import Zeno.Name ( Name )
 
 data DataType a
-  = DataType    { dataTypeId :: !Id,
-                  dataTypeName :: !String,
-                  dataTypeCons :: ![a] }
-  deriving ( Functor, Foldable, Traversable ) 
-
+  = DataType    { name :: !Name,
+                  cons :: ![a] }
 
 instance Eq (DataType a) where
-  (==) = (==) `on` dataTypeId
-  
+  (==) = (==) `on` name
+ 
 instance Ord (DataType a) where
-  compare = compare `on` dataTypeId
+  compare = compare `on` name
 
