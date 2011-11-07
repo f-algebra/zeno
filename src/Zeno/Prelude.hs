@@ -12,6 +12,7 @@ module Zeno.Prelude
   module Control.Monad.RWS,
   module Control.Monad.Identity,
   module Control.Monad.Trans.Maybe,
+  module Control.Monad.Fix,
   module Control.Exception,
   module Data.Maybe,
   module Data.Either,
@@ -31,7 +32,7 @@ module Zeno.Prelude
   module Debug.Trace,
   module System.Random,
   
-  (++), concat, intercalate, map,
+  (++), concat, intercalate, map, void,
   concatMap, concatMapM, partitionM,
   fromJustT, anyM, allM, findM, sortWith,
   minimalBy, nubOrd, elemOrd, intersectOrd
@@ -39,8 +40,8 @@ module Zeno.Prelude
 where
 
 import Prelude hiding ( mapM, foldl, foldl1, mapM_, minimum, maximum, sequence_,
-  foldr, foldr1, sequence, Maybe (..), maybe, all, any, elem, product, and, concat,
-  notElem, or, concatMap, sum, (++), map )
+  foldr, foldr1, sequence, Maybe (..), maybe, all, any, elem, product,
+  and, concat, notElem, or, concatMap, sum, (++), map )
 
 import Control.Arrow ( (>>>), (<<<), (&&&), (***), first, second )
 import Control.Applicative hiding ( empty )
@@ -57,6 +58,7 @@ import Control.Monad.List ( ListT (..) )
 import Control.Monad.Trans.Maybe
 import Control.Monad.RWS ( RWS (..), RWST (..), execRWS, evalRWS )
 import Control.Monad.Identity ( Identity (..) )
+import Control.Monad.Fix
 import Control.Exception ( assert )
 
 import Data.Maybe
@@ -87,7 +89,8 @@ import qualified Data.Set as Set
 
 infixr 6 ++
 
-
+void :: Functor f => f a -> f ()
+void = fmap (const ())
 
 (++) :: Monoid m => m -> m -> m
 (++) = mappend

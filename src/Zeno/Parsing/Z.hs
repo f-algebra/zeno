@@ -6,8 +6,9 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Utils
 import Zeno.Core
-import Zeno.Parsing.Lisp ( Lisp (..) )
+import Text.Parsec ( ParsecT, runParserT )
 
+import qualified Text.Parsec as Ps
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
@@ -15,26 +16,76 @@ import qualified Zeno.Clause as Clause
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Theory as Thy
-import qualified Zeno.Parsing.Lisp as Lisp
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-type Parser = State ZTheory
-type TermParser = ReaderT (Map String ZTerm) Parser
+type Parser = ParsecT String () (ReaderT (Map String ZTerm) (State ZTheory)) 
 
-parse :: String -> Parser ()
-parse text = parseTheory (Lisp.parse text)
+parse :: String -> State ZTheory ()
+parse = fmap handleError 
+      . flip runReaderT mempty 
+      . runParserT parseTheory () "zthy"
+  where
+  handleError (Right ()) = ()
+  handleError (Left err) = error (show err)
 
-runTermParser :: TermParser a -> Parser a
-runTermParser = flip runReaderT mempty
+parseTheory :: Parser ()
+parseTheory = void $ many parseTypeDef
+      
+parseTypeDef :: Parser ()
+parseTypeDef = do 
+  Ps.string "type"
+  label <- parseName
+  Ps.char '='
+  name <- lift (Name.declare label)
+  cons <- parseCon (Type.Var new_dtype) `Ps.sepBy1` Ps.char '|'
+  
+  let pre_dtype = DataType.DataType name []
+  
+  rec let new_dtype = DataType.DataType name cons
+      
+      
+  return ()
+  where
+  knotTie :: 
+  
+  parseCon :: Parser (String, [Type String])
+  parseCon = do
+    name <- parseName
+    args <- many parseType
+    return (name, args)
+  {-
+  parseCon :: ZType -> Parser ZVar
+  parseCon result_type = do
+    name_s <- parseName
+    arg_types <- many parseType
+    let con_type = Type.unflatten (arg_types ++ [result_type])
+    con_name <- lift $ Name.declare name_s
+    new_con <- lift $ Var.declare con_name con_type Var.Constructor
+    Thy.addDefinition con_name (Type.Var new_con)
+    return new_con
+    -}
+parseType :: Parser (Type String)
+parseType = parseTypeFun <|> (Type.Var <$> parseName)
+  where
+  parseTypeFun = do
+    types <- parseType `Ps.sepBy1` Ps.string "->"
+    return (Type.unflatten types)
 
-lookupType :: String -> Parser ZType
-lookupType name = do
-  dt_lookup <- Thy.lookupDataType name
+lookupDataType :: String -> Parser ZDataType
+lookupDataType name = do
+  dt_lookup <- lift $ Thy.lookupDataType name
   case dt_lookup of
-    Just dtype -> return (Type.Var dtype)
-    Nothing -> error $ "Type not found: " ++ name
+    Just dtype -> return dtype
+    Nothing -> Ps.parserFail $ "Type not found: " ++ name
+
+parseName :: Parser String
+parseName = some (Ps.alphaNum <|> Ps.oneOf chars)
+  where                                      
+  chars = "-<>.,?#+*&%$£^:;~/\\!=@[]'"
+
+{-
 
 lookupDef :: String -> TermParser ZTerm
 lookupDef name = do
@@ -46,6 +97,9 @@ lookupDef name = do
       case mby_global of
         Just def -> return def
         Nothing -> error $ "Variable not found: " ++ name
+
+runTermParser :: TermParser a -> Parser a
+runTermParser = flip runReaderT mempty
         
 localDefinition :: String -> ZTerm -> TermParser a -> TermParser a
 localDefinition name term = local (Map.insert name term)
@@ -153,4 +207,4 @@ parseTerm (LL (LN "case":LN label:l_term:l_alts)) = do
   
 parseTerm (LL l_terms) = 
   Term.unflattenApp <$> mapM parseTerm l_terms
-  
+  -}
