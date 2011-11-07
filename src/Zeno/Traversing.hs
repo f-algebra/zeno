@@ -31,9 +31,6 @@ class WithinTraversable t f where
   foldWithin :: Monoid m => (t -> m) -> f -> m
   foldWithin g = execWriter . mapWithinM (\t -> tell (g t) >> return t)
   
-instance Traversable f => WithinTraversable a (f a) where
-  mapWithinM = mapM
-  
 substitute :: (WithinTraversable a f, Eq a) => 
   Substitution a a -> f -> f
 substitute map = replaceManyWithin (Map.toList map)

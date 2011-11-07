@@ -5,6 +5,6 @@
     (0 y)
     ((S x') (S (+ x' y)))))
     
-(lemma <=trn 
-  (clause (all (x nat) (y nat) (z nat)) 
-    (<= x y) (<= y z) (<= x z)))
+(prop +0 
+  (all (x nat) 
+    (= (+ x 0) x)))

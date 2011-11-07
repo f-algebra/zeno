@@ -4,7 +4,7 @@ module Zeno.Term (
   TermSubstitution,
   isVar, fromVar, isApp, isCse, isLam, isFix,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
-  function
+  function, isNormal
 ) where
 
 import Prelude ()
@@ -25,15 +25,16 @@ data Term a
   | Lam !a !(Term a)
   | Fix !a !(Term a)
   | Cse     { caseOfName :: !Name,
+              caseOfFixes :: !(Set a),
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
-  deriving ( Eq, Ord, Functor, Foldable, Traversable )
+  deriving ( Eq, Ord, Foldable )
   
 data Alt a
   = Alt     { altCon :: !a,
               altVars :: ![a],
               altTerm :: !(Term a) }
-  deriving ( Eq, Ord, Functor, Foldable, Traversable )
+  deriving ( Eq, Ord, Foldable )
   
 type TermSubstitution a = Substitution (Term a) (Term a)
 
@@ -74,6 +75,13 @@ isLam _ = False
 isFix :: Term a -> Bool
 isFix (Fix {}) = True
 isFix _ = False
+
+isNormal :: forall a . Term a -> Bool
+isNormal = getAny . foldWithin anyFixedCases
+  where
+  anyFixedCases :: Term a -> Any
+  anyFixedCases cse@(Cse {}) = Any . not . Set.null . caseOfFixes $ cse
+  anyFixedCases _ = mempty
 
 fromVar :: Term a -> a
 fromVar (Var v) = v
@@ -121,9 +129,9 @@ instance Ord a => Unifiable (Term a) where
 instance WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
-  mapWithinM f (Cse id lhs alts) =
-    f =<< return (Cse id) `ap` mapWithinM f lhs 
-                          `ap` mapM (mapWithinM f) alts
+  mapWithinM f (Cse id fxs lhs alts) =
+    f =<< return (Cse id fxs) `ap` mapWithinM f lhs 
+                              `ap` mapM (mapWithinM f) alts
   mapWithinM f (Lam var rhs) =
     f =<< return (Lam var) `ap` mapWithinM f rhs
   mapWithinM f (Fix var rhs) =
@@ -147,7 +155,6 @@ instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
     | otherwise = t1r
     where
     Type.Fun t1a t1r = typeOf e1
-
   
 isOperator :: String -> Bool
 isOperator | error "find where isOperator should go" = any (not . isNormalChar)
@@ -157,6 +164,4 @@ isOperator | error "find where isOperator should go" = any (not . isNormalChar)
  -- isNormalChar '$' = True
   isNormalChar '.' = True
   isNormalChar c = isAlphaNum c
-    
 
-  

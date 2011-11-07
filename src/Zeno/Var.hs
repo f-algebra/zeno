@@ -8,7 +8,8 @@ module Zeno.Var (
   substituteTakingSources,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
-  new, declare, invent, clone
+  new, declare, invent, clone,
+  mapUniversal, foldUniversal
 ) where
 
 import Prelude ()
@@ -53,7 +54,7 @@ type CriticalPair = (ZTerm, CriticalPath)
 data ZVarSort
   = Universal     { sources :: !(Set CriticalPath) }
   | Constructor
-  | Fixed
+  | Bound
 
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType
@@ -90,6 +91,18 @@ clone var = invent (varType var) (sort var)
 universalVariables :: Foldable f => f ZVar -> Set ZVar
 universalVariables = Set.filter isUniversal . Set.fromList . toList
 
+mapUniversal :: WithinTraversable ZTerm a => (ZVar -> ZVar) -> a -> a
+mapUniversal f = mapWithin mapVars
+  where 
+  mapVars (Term.Var x) = Term.Var (f x)
+  mapVars t = t
+  
+foldUniversal :: (WithinTraversable ZTerm a, Monoid m) => (ZVar -> m) -> a -> m
+foldUniversal f = foldWithin foldVars
+  where
+  foldVars (Term.Var x) = f x
+  foldVars _ = mempty
+
 class HasSources a where
   allSources :: a -> (Set CriticalPath)
   addSources :: (Set CriticalPath) -> a -> a
@@ -107,11 +120,10 @@ instance HasSources ZVar where
     var { sort = Universal mempty }
   clearSources var = var
   
-instance (Foldable f, Functor f) => HasSources (f ZVar) where
-  {-# SPECIALISE instance HasSources ZTerm #-}
-  allSources = concatMap allSources . nubOrd . toList
-  addSources srs = fmap (addSources srs)
-  clearSources = fmap clearSources
+instance HasSources ZTerm where
+  allSources = foldUniversal allSources
+  addSources srs = mapUniversal (addSources srs)
+  clearSources = mapUniversal clearSources
   
 substituteTakingSources :: (Ord a, WithinTraversable a f, HasSources a) => 
     Substitution a a -> f -> f

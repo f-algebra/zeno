@@ -5,6 +5,7 @@ import Zeno.Prelude
 import Zeno.Core
 import Zeno.Parsing.Z
 import Zeno.Show
+import Zeno.Evaluation
 
 import qualified Zeno.Theory as Thy
 

@@ -4,11 +4,10 @@ module Zeno.Parsing.Z (
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Utils
 import Zeno.Core
-import Text.Parsec ( ParsecT, runParserT )
+import Zeno.Evaluation
+import Zeno.Parsing.Lisp ( Lisp (..) )
 
-import qualified Text.Parsec as Ps
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
@@ -16,80 +15,30 @@ import qualified Zeno.Clause as Clause
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Theory as Thy
+import qualified Zeno.Parsing.Lisp as Lisp
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-type Parser = ParsecT String () (ReaderT (Map String ZTerm) (State ZTheory)) 
+type Parser = State ZTheory
+type TermParser = ReaderT (Map String ZTerm, Set ZVar) Parser
 
-parse :: String -> State ZTheory ()
-parse = fmap handleError 
-      . flip runReaderT mempty 
-      . runParserT parseTheory () "zthy"
-  where
-  handleError (Right ()) = ()
-  handleError (Left err) = error (show err)
+parse :: String -> Parser ()
+parse text = parseTheory (Lisp.parse text)
 
-parseTheory :: Parser ()
-parseTheory = void $ many parseTypeDef
-      
-parseTypeDef :: Parser ()
-parseTypeDef = do 
-  Ps.string "type"
-  label <- parseName
-  Ps.char '='
-  name <- lift (Name.declare label)
-  cons <- parseCon (Type.Var new_dtype) `Ps.sepBy1` Ps.char '|'
-  
-  let pre_dtype = DataType.DataType name []
-  
-  rec let new_dtype = DataType.DataType name cons
-      
-      
-  return ()
-  where
-  knotTie :: 
-  
-  parseCon :: Parser (String, [Type String])
-  parseCon = do
-    name <- parseName
-    args <- many parseType
-    return (name, args)
-  {-
-  parseCon :: ZType -> Parser ZVar
-  parseCon result_type = do
-    name_s <- parseName
-    arg_types <- many parseType
-    let con_type = Type.unflatten (arg_types ++ [result_type])
-    con_name <- lift $ Name.declare name_s
-    new_con <- lift $ Var.declare con_name con_type Var.Constructor
-    Thy.addDefinition con_name (Type.Var new_con)
-    return new_con
-    -}
-parseType :: Parser (Type String)
-parseType = parseTypeFun <|> (Type.Var <$> parseName)
-  where
-  parseTypeFun = do
-    types <- parseType `Ps.sepBy1` Ps.string "->"
-    return (Type.unflatten types)
+runTermParser :: TermParser a -> Parser a
+runTermParser = flip runReaderT mempty
 
-lookupDataType :: String -> Parser ZDataType
-lookupDataType name = do
-  dt_lookup <- lift $ Thy.lookupDataType name
+lookupType :: String -> Parser ZType
+lookupType name = do
+  dt_lookup <- Thy.lookupDataType name
   case dt_lookup of
-    Just dtype -> return dtype
-    Nothing -> Ps.parserFail $ "Type not found: " ++ name
-
-parseName :: Parser String
-parseName = some (Ps.alphaNum <|> Ps.oneOf chars)
-  where                                      
-  chars = "-<>.,?#+*&%$£^:;~/\\!=@[]'"
-
-{-
+    Just dtype -> return (Type.Var dtype)
+    Nothing -> error $ "Type not found: " ++ name
 
 lookupDef :: String -> TermParser ZTerm
 lookupDef name = do
-  mby_local <- asks (Map.lookup name)
+  mby_local <- asks (Map.lookup name . fst)
   case mby_local of
     Just def -> return def
     Nothing -> do
@@ -97,14 +46,19 @@ lookupDef name = do
       case mby_global of
         Just def -> return def
         Nothing -> error $ "Variable not found: " ++ name
-
-runTermParser :: TermParser a -> Parser a
-runTermParser = flip runReaderT mempty
         
 localDefinition :: String -> ZTerm -> TermParser a -> TermParser a
-localDefinition name term = local (Map.insert name term)
+localDefinition name term = local (first (Map.insert name term))
+
+withinFix :: ZVar -> TermParser a -> TermParser a
+withinFix fix_var = local (second (Set.insert fix_var))
 
 transformZLisp :: Lisp -> Lisp
+transformZLisp (LL (LN "all":rest)) 
+  | length rest > 2 = foldr foldAll cls typed_vars
+  where
+  (typed_vars, cls) = takeLast rest
+  foldAll typed_var cls = LL [LN "all", typed_var, cls]
 transformZLisp (LL (LN "lam":rest)) 
   | length rest > 2 = foldr foldLam term typed_vars
   where
@@ -129,7 +83,7 @@ parseTheory (LL decls) =
 
 parseTopLevel :: Lisp -> Parser ()
 parseTopLevel (LL [LN "def", LN name, def]) = do
-  term <- runTermParser (parseTerm def)
+  term <- runTermParser (normalise <$> parseTerm def)
   Thy.addDefinition name term
 parseTopLevel (LL ((LN "type"):(LN type_name):l_cons)) = do
   name <- Name.declare type_name
@@ -149,17 +103,33 @@ parseTopLevel (LL ((LN "type"):(LN type_name):l_cons)) = do
     (con_name, l_args) = case l_con of
       LN con_name -> (con_name, [])
       LL ((LN con_name):l_args) -> (con_name, l_args)
-parseTopLevel (LL (LN "conject":LN name:l_cls)) = do
-  cls <- parseClause l_cls
+parseTopLevel (LL [LN "prop", LN name, cls_l]) = do
+  cls <- runTermParser (parseClause cls_l)
   Thy.addConjecture name cls
 parseTopLevel other = 
   error $ "Top level statement not recognized: " ++ show other
   
-parseClause :: Lisp -> Parser ZClause
-parseClause (LL (LN "all":rest)) = do
+parseClause :: Lisp -> TermParser ZClause
+parseClause (LL [LN "all", LL [LN name, type_l], cls_l]) = do
+  var_type <- lift (parseType type_l)
+  all_var <- Var.declare name var_type Var.Bound
+  cls <- localDefinition name (Term.Var all_var) (parseClause cls_l)
+  return (Clause.addForall all_var cls)
+parseClause (LL [LN "=", t1_l, t2_l]) = do
+  t1 <- normalise <$> parseTerm t1_l
+  t2 <- normalise <$> parseTerm t2_l
+  return (Clause.Clause mempty mempty (Clause.Equal t1 t2))
+parseClause (LL cls_l)
+  | length cls_l > 1 = do
+    cqnt <- parseClause cqnt_l
+    ants <- mapM parseClause ants_l
+    return (foldr Clause.addAntecedent cqnt ants)
   where
-  (vars_l, 
+  (ants_l, cqnt_l) = takeLast cls_l
+parseClause other =
+  error $ "Clause not recognized: " ++ show other
   
+
 parseType :: Lisp -> Parser ZType
 parseType (LN name) = lookupType name
 parseType (LL l_types) = do
@@ -173,19 +143,22 @@ parseTerm (LL [LN "let", LL [LN name, l_term], l_in]) = do
   localDefinition name term (parseTerm l_in)
 parseTerm (LL [LN "fix", LL [LN name, l_type], l_term]) = do 
   fix_type <- lift (parseType l_type)
-  fix_var <- Var.declare name fix_type Var.Fixed
-  term <- localDefinition name (Term.Var fix_var) (parseTerm l_term)
+  fix_var <- Var.declare name fix_type Var.Bound
+  term <- localDefinition name (Term.Var fix_var) 
+        $ withinFix fix_var 
+        $ parseTerm l_term
   return (Term.Fix fix_var term)
 parseTerm (LL [LN "lam", LL [LN name, l_type], l_term]) = do
   var_type <- lift (parseType l_type)
-  lam_var <- Var.declare name var_type (Var.Universal mempty)
+  lam_var <- Var.declare name var_type Var.Bound
   term <- localDefinition name (Term.Var lam_var) (parseTerm l_term)
   return (Term.Lam lam_var term)
 parseTerm (LL (LN "case":LN label:l_term:l_alts)) = do
   name <- Name.declare label
   term <- parseTerm l_term
   alts <- mapM parseAlt l_alts
-  return (Term.Cse name term alts)
+  fixes <- asks snd
+  return (Term.Cse name fixes term alts)
   where
   parseAlt (LL [l_pattern, l_term]) = do
     Term.Var con_var <- lookupDef con_name
@@ -200,11 +173,11 @@ parseTerm (LL (LN "case":LN label:l_term:l_alts)) = do
     
     makeVar :: String -> ZType -> TermParser ZVar
     makeVar var_name var_type =
-      Var.declare var_name var_type (Var.Universal mempty)
+      Var.declare var_name var_type Var.Bound
       
     localVar :: (String, ZVar) -> TermParser a -> TermParser a
     localVar (name, var) = localDefinition name (Term.Var var)
   
 parseTerm (LL l_terms) = 
   Term.unflattenApp <$> mapM parseTerm l_terms
-  -}
+  
