@@ -76,12 +76,17 @@ isFix :: Term a -> Bool
 isFix (Fix {}) = True
 isFix _ = False
 
-isNormal :: forall a . Term a -> Bool
-isNormal = getAny . foldWithin anyFixedCases
+isNormal :: forall a . Ord a => Term a -> Bool
+isNormal = Set.null . freeFixes
   where
-  anyFixedCases :: Term a -> Any
-  anyFixedCases cse@(Cse {}) = Any . not . Set.null . caseOfFixes $ cse
-  anyFixedCases _ = mempty
+  freeFixes :: Term a -> Set a
+  freeFixes (Var _) = mempty
+  freeFixes (App t1 t2) = freeFixes t1 `mappend` freeFixes t2
+  freeFixes (Lam _ t) = freeFixes t
+  freeFixes (Fix fix t) = Set.delete fix (freeFixes t)
+  freeFixes (Cse _ fixes term alts) = fixes `Set.union` inner
+    where
+    inner = concatMap freeFixes (term : map altTerm alts)
 
 fromVar :: Term a -> a
 fromVar (Var v) = v

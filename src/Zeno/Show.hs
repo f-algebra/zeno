@@ -92,7 +92,7 @@ instance Show a => Show (Term a) where
       lhs' <- indent . showTerm $ lhs
       let lhs'' | Term.isVar lhs = lhs'
                 | otherwise = "(" ++ lhs' ++ ")"
-      return $ i ++ "case<" ++ show lbl ++ "> " ++ lhs'' ++ " of" ++ alts'
+      return $ i ++ "case [" ++ show lbl ++ "] " ++ lhs'' ++ " of" ++ alts'
     
 instance Show ZTheory where
   show thy = dtypes ++ defs ++ conjs
