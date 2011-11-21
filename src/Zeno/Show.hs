@@ -39,21 +39,16 @@ instance Show a => Show (Equation a) where
   show (Clause.Equal l r) = show l ++ " = " ++ show r
 
 instance Show a => Show (Clause a) where
-  show cls = vars_s ++ ants_s ++ show (Clause.consequent cls)
+  show cls = ants_s ++ show (Clause.consequent cls)
     where
     ants = Clause.antecedents cls
-    vars = Clause.forall cls
     
     showAnt cls
-      | Set.null (Clause.forall cls) 
-        && null (Clause.antecedents cls) = show cls
+      | null (Clause.antecedents cls) = show cls
       | otherwise = "(" ++ show cls ++ ")"
     
     ants_s  | null ants = ""
             | otherwise = (intercalate ", " $ map showAnt ants) ++ " ==> "
-    vars_s  | Set.null vars = ""
-            | otherwise = "all " 
-                ++ (intercalate " " $ map show $ toList vars) ++ " . "
               
 instance Show ZVar where
   show = show . Var.name 

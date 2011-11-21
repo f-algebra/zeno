@@ -21,16 +21,24 @@ parse text = case runP lispParser () "zeno" text of
   Right lisp -> lisp
   Left err -> error (show err)
   
-nameChars :: Parsec String () Char
-nameChars = alphaNum <|> oneOf chars
-  where chars = "-<>.,?#+*&|%$£^:;~/\\!=@[]'"
+lispWord :: Parsec String () String
+lispWord = many1 $ satisfy (not . flip elem "(.) \n")
   
 lispParser :: Parsec String () Lisp
 lispParser = LL <$> many (spaces *> lispList <* spaces)
   where
-  lispName = LN <$> many1 nameChars
-  lispList = LL <$> (char '(' *> many1 listInner <* char ')')
-  listInner = spaces *> (lispName <|> lispList) <* spaces
+  lispName = LN <$> lispWord
+  lispList = do
+    char '(' 
+    inner <- many1 listInner
+    end <- try dottedEnd <|> pure []
+    char ')'
+    let all_inner | null end = inner
+                  | otherwise = inner ++ [LL end]
+    return (LL all_inner)
+    where
+    dottedEnd = char '.' *> many1 listInner
+    listInner = spaces *> (lispName <|> lispList) <* spaces
   
 fromLN :: Lisp -> String
 fromLN (LN name) = name

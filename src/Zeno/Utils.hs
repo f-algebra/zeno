@@ -35,18 +35,13 @@ nubAndDifference :: Ord a => [a] -> [a] -> [a]
 nubAndDifference xs ys = Set.toList $ 
   Set.difference (Set.fromList xs) (Set.fromList ys)
   
-newtype EndoKleisli m a b = 
-  EndoKleisli { runEndoKleisli :: (a -> m a, b) }
-
-instance (Monad m, Monoid b) => Monoid (EndoKleisli m a b) where
-  mempty = EndoKleisli (return, mempty)
-  (EndoKleisli (f, a)) `mappend` (EndoKleisli (g, b)) = 
-    EndoKleisli (f >=> g, a `mappend` b)
+newtype EndoKleisli m a 
+  = EndoKleisli { runEndoKleisli :: a -> m a }
   
-instance Monad m => Monad (EndoKleisli m a) where
-  return x = EndoKleisli (return, x)
-  (EndoKleisli (f, a)) >>= g = 
-    let EndoKleisli (h, b) = g a in EndoKleisli (f >=> h, b)
+instance Monad m => Monoid (EndoKleisli m a) where
+  mempty = EndoKleisli return
+  mappend ek1 ek2 = 
+    EndoKleisli $ runEndoKleisli ek1 >=> runEndoKleisli ek2
   
 mapPair :: (a -> b) -> (a, a) -> (b, b)
 mapPair f = f *** f
@@ -107,16 +102,6 @@ mapM_to_foldMapM mf f = mf (f_gen f) >>> execWriterT
 foldMap_to_foldr :: ((a -> Endo b) -> c -> Endo b) -> 
   (a -> b -> b) -> b -> c -> b
 foldMap_to_foldr foldMap f z t = appEndo (foldMap (Endo . f) t) z
-
-mapM_to_foldrM :: (Monad m, Applicative t) => 
-  ((a -> EndoKleisli m b (t a)) -> c -> EndoKleisli m b d) -> 
-    (a -> b -> m b) -> b -> c -> m b
-mapM_to_foldrM mapM f z t = 
-  (fst $ runEndoKleisli $ mapM (fld f) t) z
-  where
-    fld :: (Monad m, Applicative t) => 
-      (a -> b -> m b) -> a -> EndoKleisli m b (t a)
-    fld f x = EndoKleisli (f x, pure x)
     
 flipPair :: (a, b) -> (b, a)
 flipPair (a, b) = (b, a)

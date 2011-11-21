@@ -1,10 +1,9 @@
 (type nat 0 (S nat))
 
-(fun (+ (nat nat nat)) x y 
-  (case + x
+(fun (+ (nat nat nat)) x y .
+  case + x 
     (0 y)
-    ((S x') (S (+ x' y)))))
+    ((S x') . S (+ x' y)))
     
-(prop +0 
-  (all (x nat) 
-    (= (+ x 0) x)))
+(prop +0 . all (x nat)
+  (= (+ x 0) x))

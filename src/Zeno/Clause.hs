@@ -1,7 +1,6 @@
 module Zeno.Clause (
   Equation (..), Clause (..), 
-  addAntecedent, removeAntecedent,
-  addForall
+  addAntecedent, removeAntecedent
 ) where
 
 import Prelude ()
@@ -17,8 +16,7 @@ data Equation a
   deriving ( Eq, Foldable )
 
 data Clause a
-  = Clause      { forall :: !(Set a),
-                  antecedents :: ![Clause a],
+  = Clause      { antecedents :: ![Clause a],
                   consequent :: !(Equation a) }
   deriving ( Eq, Foldable )
             
@@ -29,10 +27,10 @@ instance WithinTraversable (Term a) (Equation a) where
     return (Equal t1' t2')
   
 instance WithinTraversable (Term a) (Clause a) where
-  mapWithinM f (Clause vars conds eq) = do
+  mapWithinM f (Clause conds eq) = do
     eq' <- mapWithinM f eq
     conds' <- mapM (mapWithinM f) conds
-    return (Clause vars conds' eq')
+    return (Clause conds' eq')
     
 instance HasVariables (Equation a) where
   type Var (Equation a) = a
@@ -41,15 +39,10 @@ instance HasVariables (Equation a) where
 instance HasVariables (Clause a) where
   type Var (Clause a) = a
   
-  freeVars cls = 
-    (consVars ++ antsVars) `Set.difference` (forall cls)
+  freeVars cls = consVars ++ antsVars
     where
     consVars = freeVars (consequent cls)
     antsVars = Set.unions $ map freeVars (antecedents cls)
-
-addForall :: Ord a => a -> Clause a -> Clause a
-addForall var cs = cs
-  { forall = Set.insert var (forall cs) }
     
 addAntecedent :: Clause a -> Clause a -> Clause a
 addAntecedent eq cs = cs 

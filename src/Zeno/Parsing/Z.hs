@@ -113,12 +113,11 @@ parseClause :: Lisp -> TermParser ZClause
 parseClause (LL [LN "all", LL [LN name, type_l], cls_l]) = do
   var_type <- lift (parseType type_l)
   all_var <- Var.declare name var_type Var.Bound
-  cls <- localDefinition name (Term.Var all_var) (parseClause cls_l)
-  return (Clause.addForall all_var cls)
+  localDefinition name (Term.Var all_var) (parseClause cls_l)
 parseClause (LL [LN "=", t1_l, t2_l]) = do
   t1 <- normalise <$> parseTerm t1_l
   t2 <- normalise <$> parseTerm t2_l
-  return (Clause.Clause mempty mempty (Clause.Equal t1 t2))
+  return (Clause.Clause mempty (Clause.Equal t1 t2))
 parseClause (LL cls_l)
   | length cls_l > 1 = do
     cqnt <- parseClause cqnt_l
