@@ -7,7 +7,7 @@ import Zeno.Prelude
 import Zeno.Utils
 import Zeno.Type ( Type, Typed (..) )
 import Zeno.DataType ( DataType )
-import Zeno.Theory ( ZTheory )
+import Zeno.Core ( ZenoTheory )
 import Zeno.Var ( ZVar )
 import Zeno.Term ( Term, Alt )
 import Zeno.Clause ( Equation, Clause )
@@ -17,7 +17,7 @@ import qualified Zeno.DataType as DataType
 import qualified Zeno.Clause as Clause
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
-import qualified Zeno.Theory as Thy
+import qualified Zeno.Core as Zeno
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -89,19 +89,19 @@ instance Show a => Show (Term a) where
                 | otherwise = "(" ++ lhs' ++ ")"
       return $ i ++ "case [" ++ show lbl ++ "] " ++ lhs'' ++ " of" ++ alts'
     
-instance Show ZTheory where
+instance Show ZenoTheory where
   show thy = dtypes ++ defs ++ conjs
     where
-    dtypes = Thy.dataTypes thy 
+    dtypes = Zeno.dataTypes thy 
       |> Map.elems 
       |> concatMap showDataType
       
-    defs = Thy.definitions thy 
+    defs = Zeno.definitions thy 
       |> Map.toList 
       |> filter (not . Term.isVar . snd) 
       |> concatMap showLet
       
-    conjs = Thy.conjectures thy
+    conjs = Zeno.conjectures thy
       |> Map.toList
       |> concatMap showProp
       

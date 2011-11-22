@@ -9,7 +9,7 @@ import Zeno.Prelude
 newtype Unique = Unique { runUnique :: Int }
   deriving ( Eq, Ord )
 
-data Name = Name  { nameId :: Unique,
+data Name = Name  { nameId :: !Unique,
                     nameLabel :: !String }
 
 class UniqueGen g where
@@ -22,7 +22,8 @@ instance Ord Name where
   compare = compare `on` nameId
 
 instance UniqueGen Unique where
-  takeUnique uni@(Unique i) = (uni, Unique (i + 1))
+  takeUnique (Unique i) = (uni', uni')
+    where uni' = Unique (i + 1)
 
 instance Show Unique where
   show = intToChars . runUnique

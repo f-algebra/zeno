@@ -29,7 +29,7 @@ lispParser = LL <$> many (spaces *> lispList <* spaces)
   where
   lispName = LN <$> lispWord
   lispList = do
-    char '(' 
+    char '('
     inner <- many1 listInner
     end <- try dottedEnd <|> pure []
     char ')'

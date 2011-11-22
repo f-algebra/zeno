@@ -1,5 +1,5 @@
 -- |A combination of the Reader and Writer monad.
--- Use with a commutative monoid to give a parallelizable computation. 
+-- Useful for parallelizable computation.
 module Zeno.ReaderWriter (
   ReaderWriter, runReaderWriter
 ) where
@@ -12,7 +12,7 @@ newtype ReaderWriter r w a
 
 runReaderWriter :: ReaderWriter r w a -> r -> (a, w)
 runReaderWriter = runRW
-  
+
 
 instance Functor (ReaderWriter r w) where
   fmap f rw = RW newRW

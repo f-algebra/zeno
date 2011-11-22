@@ -3,13 +3,13 @@ module Main where
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Core
-import Zeno.Parsing.Z
 import Zeno.Show
-import Zeno.Evaluation
+import Zeno.Parsing.ZLisp
+import Zeno.Simplifiers.Reducer
 
-import qualified Zeno.Theory as Thy
+import qualified Zeno.Core as Zeno
 
 main :: IO ()
 main = do 
   zthy <- readFile "test.zthy"
-  print $ flip execState Thy.empty $ parse zthy
+  print $ Zeno.theory $ flip execState Zeno.initialState $ parse zthy

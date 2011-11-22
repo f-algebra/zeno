@@ -1,37 +1,40 @@
-module Zeno.Parsing.Z (
+module Zeno.Parsing.ZLisp (
   parse
 ) where
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Core
-import Zeno.Evaluation
+import Zeno.Utils
+import Zeno.Traversing
+import Zeno.Core ( Zeno )
+import Zeno.Var ( ZVar, ZTerm, ZType, ZClause )
+import Zeno.Type ( typeOf )
 import Zeno.Parsing.Lisp ( Lisp (..) )
 
+import qualified Zeno.Simplifiers.Reducer as Reducer
+import qualified Zeno.Core as Zeno
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Clause as Clause
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
-import qualified Zeno.Theory as Thy
 import qualified Zeno.Parsing.Lisp as Lisp
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-type Parser = State ZTheory
-type TermParser = ReaderT (Map String ZTerm, Set ZVar) Parser
+type TermParser = ReaderT (Map String ZTerm, Set ZVar) Zeno
 
-parse :: String -> Parser ()
+parse :: String -> Zeno ()
 parse text = parseTheory (Lisp.parse text)
 
-runTermParser :: TermParser a -> Parser a
+runTermParser :: TermParser a -> Zeno a
 runTermParser = flip runReaderT mempty
 
-lookupType :: String -> Parser ZType
+lookupType :: String -> Zeno ZType
 lookupType name = do
-  dt_lookup <- Thy.lookupDataType name
+  dt_lookup <- Zeno.lookupDataType name
   case dt_lookup of
     Just dtype -> return (Type.Var dtype)
     Nothing -> error $ "Type not found: " ++ name
@@ -42,7 +45,7 @@ lookupDef name = do
   case mby_local of
     Just def -> return def
     Nothing -> do
-      mby_global <- Thy.lookupDefinition name
+      mby_global <- Zeno.lookupDefinition name
       case mby_global of
         Just def -> return def
         Nothing -> error $ "Variable not found: " ++ name
@@ -77,27 +80,27 @@ transformZLisp (LL (LN "fun":typed_name@(LL [LN name, type_l]):rest)) =
   fixed = LL [LN "fix", typed_name, lambdas]
 transformZLisp lisp = lisp
 
-parseTheory :: Lisp -> Parser ()
+parseTheory :: Lisp -> Zeno ()
 parseTheory (LL decls) = 
   mapM_ parseTopLevel . map (mapWithin transformZLisp) $ decls
 
-parseTopLevel :: Lisp -> Parser ()
+parseTopLevel :: Lisp -> Zeno ()
 parseTopLevel (LL [LN "def", LN name, def]) = do
-  term <- runTermParser (normalise <$> parseTerm def)
-  Thy.addDefinition name term
+  term <- runTermParser (Reducer.normalise <$> parseTerm def)
+  Zeno.addDefinition name term
 parseTopLevel (LL ((LN "type"):(LN type_name):l_cons)) = do
   name <- Name.declare type_name
   rec let new_dtype = DataType.DataType name cons
-      Thy.addDataType new_dtype
+      Zeno.addDataType new_dtype
       cons <- mapM (parseCon (Type.Var new_dtype)) l_cons
   return ()
   where
-  parseCon :: ZType -> Lisp -> Parser ZVar
+  parseCon :: ZType -> Lisp -> Zeno ZVar
   parseCon res_type l_con = do
     args <- mapM parseType l_args
     let con_type = Type.unflatten (args ++ [res_type])
     new_con <- Var.declare con_name con_type Var.Constructor
-    Thy.addDefinition con_name (Term.Var new_con)
+    Zeno.addDefinition con_name (Term.Var new_con)
     return new_con    
     where
     (con_name, l_args) = case l_con of
@@ -105,7 +108,7 @@ parseTopLevel (LL ((LN "type"):(LN type_name):l_cons)) = do
       LL ((LN con_name):l_args) -> (con_name, l_args)
 parseTopLevel (LL [LN "prop", LN name, cls_l]) = do
   cls <- runTermParser (parseClause cls_l)
-  Thy.addConjecture name cls
+  Zeno.addConjecture name cls
 parseTopLevel other = 
   error $ "Top level statement not recognized: " ++ show other
   
@@ -115,8 +118,8 @@ parseClause (LL [LN "all", LL [LN name, type_l], cls_l]) = do
   all_var <- Var.declare name var_type Var.Bound
   localDefinition name (Term.Var all_var) (parseClause cls_l)
 parseClause (LL [LN "=", t1_l, t2_l]) = do
-  t1 <- normalise <$> parseTerm t1_l
-  t2 <- normalise <$> parseTerm t2_l
+  t1 <- Reducer.normalise <$> parseTerm t1_l
+  t2 <- Reducer.normalise <$> parseTerm t2_l
   return (Clause.Clause mempty (Clause.Equal t1 t2))
 parseClause (LL cls_l)
   | length cls_l > 1 = do
@@ -129,7 +132,7 @@ parseClause other =
   error $ "Clause not recognized: " ++ show other
   
 
-parseType :: Lisp -> Parser ZType
+parseType :: Lisp -> Zeno ZType
 parseType (LN name) = lookupType name
 parseType (LL l_types) = do
   types <- mapM parseType l_types

@@ -1,118 +1,107 @@
--- |This module re-exports all of the modules that make up the /core/ of Zeno.
--- It also contains a lot of miscellaneous code that doesn't really belong anywhere
--- in particular.
 module Zeno.Core (
-  module Zeno.Type,
-  module Zeno.Var,
-  module Zeno.Name,
-  module Zeno.Utils,
-  module Zeno.Theory,
-  module Zeno.Unification,
-  module Zeno.Traversing,
-  module Zeno.Show
+  Zeno, ATP, ZenoState (..), ZenoTheory (..), 
+  ZenoEngine (..), DiscoveredLemma (..),
+  Prover, Simplifier, Disprover, Inventor, Generaliser,
+  ZProofStep, ZCounterExample,
+  initialState, emptyTheory, emptyEngine,
+  addDataType, addDefinition, addConjecture,
+  lookupDefinition, lookupDataType
 ) where
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Var ( ZVar, ZDataType, ZAlt, ZTerm, 
-                  ZClause, ZTermSubstitution, ZEquation,
-                  CriticalPath, CriticalPair,
-                  ZType, ZVarSort, HasSources (..) )
-import Zeno.Name ( Name, Unique, UniqueGen (..) )
-import Zeno.Type ( Typed (..) )
-import Zeno.Utils
-import Zeno.Traversing
-import Zeno.Unification
-import Zeno.Theory ( ZTheory )
-import Zeno.Show
+import Zeno.Var ( ZTerm, ZClause, ZDataType,
+                  ZTermSubstitution )
+import Zeno.Parsing.Lisp ( Lisp )
+import Zeno.Name ( Unique, UniqueGen (..) )
+import Zeno.ReaderWriter
 
-{-
+import qualified Zeno.DataType as DataType
+import qualified Data.Map as Map
 
--- |The return value from 'instantiateConstructors',
--- 'fst' is the instantiated constructor term,
--- 'snd' is the list of recursive variables in that term.
-type ConstructorInstance = (ZTerm, [ZVar])
+type ATP = ReaderWriter ZenoState [DiscoveredLemma]
+type Zeno = State ZenoState
+type StringMap = Map String
 
-destructibleType :: Type a -> Bool
-destructibleType = isVarType . head . flattenAppType
+type ZProofStep = String
+type ZProof = String
+type ZCounterExample = ZTermSubstitution
 
-destructibleTerm :: ZTerm -> Bool
-destructibleTerm term 
-   = isTerm term
-  && destructibleType (getType term)
-  && notConstructor
-  where
-  notConstructor = fromMaybe False $ do
-    fun <- termFunction term
-    return (not (isConstructorVar fun))
-  
-destructibleVar :: ZVar -> Bool
-destructibleVar = destructibleTerm . Var
+type Prover = ZClause -> ATP (Maybe (ZProofStep, [ZClause]))
+type Simplifier = [ZClause] -> ZTerm -> ATP (Maybe ZTerm)
+type Disprover = ZClause -> ATP (Maybe ZCounterExample)
+type Inventor = [ZClause] -> ZTerm -> ZTerm -> ATP (Maybe ZTerm)
+type Generaliser = ZClause -> ATP (Maybe ZClause)
 
-recursiveConstructorInstance :: ConstructorInstance -> Bool
-recursiveConstructorInstance (term, _) =
-  case termFunction term of
-    Just var -> isConstructorVar var 
-             && isRecursiveConstructor (varClass var)
-    Nothing -> False
+data ZenoState
+  = ZenoState         { uniqueGen :: !Unique,
+                        theory :: !ZenoTheory,
+                        engine :: !ZenoEngine }
 
-proofCriticalTerm :: CriticalTerm -> Bool
-proofCriticalTerm (term, src) =
-  destructibleTerm term
-  && not (null src || any invalid (allSources term))
-  where
-  invalid :: CriticalPath -> Bool
-  invalid = orderedSupersetOf src
+data ZenoTheory 
+  = ZenoTheory        { definitions :: !(StringMap ZTerm),
+                        dataTypes :: !(StringMap ZDataType),
+                        conjectures :: !(StringMap ZClause),
+                        theorems :: !(StringMap (ZClause, ZProof)) }
+                        
+data ZenoEngine 
+  = ZenoEngine        { provers :: !(StringMap Prover),
+                        simplifiers :: !(StringMap Simplifier),
+                        disprovers :: !(StringMap Disprover),
+                        inventors :: !(StringMap Inventor),
+                        generalisers :: !(StringMap Generaliser) }
 
-instantiateConstructors :: forall t m . (IdCounter t, MonadState t m) =>
-    CriticalTerm -> m [ConstructorInstance]
-instantiateConstructors (term, source) = mapM instantiate dt_cons
-  where                          
-  term_type = getType term
-  VarType dtype@(DataType _ _ _ dt_cons) = 
-    head (flattenAppType term_type)
-  
-  instantiate :: ZVar -> m ConstructorInstance
-  instantiate con = do
-    new_ids <- replicateM (length arg_types) newIdS
-    let makeVar new_id new_type = ZVar new_id Nothing new_type var_class
-        args = zipWith ($) (map makeVar new_ids) arg_types
-        term = unflattenApp (map Var (con' : args))
-        vars = filter ((== res_type) . varType) args
-        
-    let update :: (Typed a, TypeVar a ~ ZDataType) => a -> a
-        update = conUnifier term
-        
-    return (update term, map update vars)
-    where
-    conUnifier :: (Typed a, TypeVar a ~ ZDataType) => ZTerm -> a -> a 
-    conUnifier con_term = 
-      case unify new_con_type term_type of
-        NoUnifier -> error $
-          "Couldn't unify types in constructor instantiation."
-          ++ "\nTerm: " ++ showTyped term
-          ++ "\nConstructor: " ++ showTyped con
-        Unifier sub -> updateType sub
-      where 
-      new_con_type = unflattenForAllType poly_vars (getType con_term)
+data DiscoveredLemma 
+  = DiscoveredLemma   { discoveredProperty :: !ZClause,
+                        discoveredProof :: !ZProof,
+                        discoveredReason :: !String }
 
-    (poly_vars, con_type) = flattenForAllType (getType con)
-    flat_con_types = flattenFunType con_type
-    (arg_types, [res_type]) = splitAt (length flat_con_types - 1) flat_con_types
-    var_class = UniversalVar [source]
-    con' = con { varType = con_type }
+instance UniqueGen ZenoState where
+  takeUnique zeno = 
+    let (new_uni, new_gen) = takeUnique (uniqueGen zeno)
+    in (new_uni, zeno { uniqueGen = new_gen })
     
-mergeCriticalTerms :: [CriticalTerm] -> [CriticalTerm] 
-mergeCriticalTerms cterms = -- filterEach requiredSource `concatMap` clustered
-  filterEach requiredSource cterms
-  where
-  clustered = clusterBy ((==) `on` fst) cterms
+emptyTheory :: ZenoTheory 
+emptyTheory
+  = ZenoTheory  { definitions = mempty,
+                  dataTypes = mempty,
+                  conjectures = mempty,
+                  theorems = mempty }
+                  
+emptyEngine :: ZenoEngine
+emptyEngine 
+  = ZenoEngine  { provers = mempty,
+                  simplifiers = mempty,
+                  disprovers = mempty,
+                  inventors = mempty,
+                  generalisers = mempty }
+   
+initialState :: ZenoState
+initialState 
+  = ZenoState   { uniqueGen = mempty,
+                  theory = emptyTheory,
+                  engine = emptyEngine }
+                  
+modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
+modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
 
-  requiredSource :: (CriticalTerm, [CriticalTerm]) -> Bool
-  requiredSource ((_, src), other_terms) 
-    = not 
-    $ any (flip orderedSupersetOf src)
-    $ map snd
-    $ other_terms
- -}
+modifyEngine :: MonadState ZenoState m => (ZenoEngine -> ZenoEngine) -> m ()
+modifyEngine f = modify $ \zs -> zs { engine = f (engine zs) } 
 
+addDataType :: MonadState ZenoState m => ZDataType -> m ()
+addDataType dtype = modifyTheory $ \z -> z 
+  { dataTypes = Map.insert (show . DataType.name $ dtype) dtype (dataTypes z) }
+      
+addDefinition :: MonadState ZenoState m => String -> ZTerm -> m ()
+addDefinition name expr = modifyTheory $ \z -> z
+  { definitions = Map.insert name expr (definitions z) }
+  
+addConjecture :: MonadState ZenoState m => String -> ZClause -> m ()
+addConjecture name cls = modifyTheory $ \z -> z
+  { conjectures = Map.insert name cls (conjectures z) }
+  
+lookupDefinition :: MonadState ZenoState m => String -> m (Maybe ZTerm)
+lookupDefinition name = gets (Map.lookup name . definitions . theory)
+
+lookupDataType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
+lookupDataType name = gets (Map.lookup name . dataTypes . theory)
