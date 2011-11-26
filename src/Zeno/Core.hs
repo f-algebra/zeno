@@ -1,9 +1,8 @@
 module Zeno.Core (
-  Zeno, ATP, ZenoState (..), ZenoTheory (..), 
-  ZenoEngine (..), DiscoveredLemma (..),
+  Zeno, ATP, ZenoState (..), ZenoTheory (..), DiscoveredLemma (..),
   Prover, Simplifier, Disprover, Inventor, Generaliser,
   ZProofStep, ZCounterExample,
-  initialState, emptyTheory, emptyEngine,
+  initialState, emptyTheory,
   addDataType, addDefinition, addConjecture,
   lookupDefinition, lookupDataType
 ) where
@@ -35,26 +34,19 @@ type Generaliser = ZClause -> ATP (Maybe ZClause)
 
 data ZenoState
   = ZenoState         { uniqueGen :: !Unique,
-                        theory :: !ZenoTheory,
-                        engine :: !ZenoEngine }
+                        theory :: !ZenoTheory }
 
 data ZenoTheory 
   = ZenoTheory        { definitions :: !(StringMap ZTerm),
                         dataTypes :: !(StringMap ZDataType),
                         conjectures :: !(StringMap ZClause),
                         theorems :: !(StringMap (ZClause, ZProof)) }
-                        
-data ZenoEngine 
-  = ZenoEngine        { provers :: !(StringMap Prover),
-                        simplifiers :: !(StringMap Simplifier),
-                        disprovers :: !(StringMap Disprover),
-                        inventors :: !(StringMap Inventor),
-                        generalisers :: !(StringMap Generaliser) }
 
 data DiscoveredLemma 
   = DiscoveredLemma   { discoveredProperty :: !ZClause,
                         discoveredProof :: !ZProof,
                         discoveredReason :: !String }
+                        
 
 instance UniqueGen ZenoState where
   takeUnique zeno = 
@@ -67,26 +59,14 @@ emptyTheory
                   dataTypes = mempty,
                   conjectures = mempty,
                   theorems = mempty }
-                  
-emptyEngine :: ZenoEngine
-emptyEngine 
-  = ZenoEngine  { provers = mempty,
-                  simplifiers = mempty,
-                  disprovers = mempty,
-                  inventors = mempty,
-                  generalisers = mempty }
    
 initialState :: ZenoState
 initialState 
   = ZenoState   { uniqueGen = mempty,
-                  theory = emptyTheory,
-                  engine = emptyEngine }
+                  theory = emptyTheory }
                   
 modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
 modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
-
-modifyEngine :: MonadState ZenoState m => (ZenoEngine -> ZenoEngine) -> m ()
-modifyEngine f = modify $ \zs -> zs { engine = f (engine zs) } 
 
 addDataType :: MonadState ZenoState m => ZDataType -> m ()
 addDataType dtype = modifyTheory $ \z -> z 

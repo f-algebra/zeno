@@ -5,7 +5,7 @@ import Zeno.Prelude
 import Zeno.Core
 import Zeno.Show
 import Zeno.Parsing.ZLisp
-import Zeno.Simplifiers.Reducer
+import Zeno.Evaluation
 
 import qualified Zeno.Core as Zeno
 

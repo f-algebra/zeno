@@ -1,7 +1,7 @@
--- | An implementation of beta-reduction as a 'Simplifier'
-module Zeno.Simplifiers.Reducer (
-  reducer, normalise
-) where
+-- | Beta-reduction
+module Zeno.Evaluation (
+  evaluate
+) where                    
 
 import Prelude ()
 import Zeno.Prelude
@@ -9,7 +9,6 @@ import Zeno.ReaderWriter
 import Zeno.Var ( ZVar, ZTerm )
 import Zeno.Traversing
 
-import qualified Zeno.Core as Zeno
 import qualified Zeno.Clause as Clause
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
@@ -19,15 +18,8 @@ import qualified Data.Map as Map
 
 type Eval = ReaderWriter (Set ZVar) Any
 
-reducer :: Zeno.Simplifier
-reducer _ term
-  | any_reductions = return (Just new_term)
-  | otherwise = return Nothing
-  where
-  (new_term, getAny -> any_reductions) = runReaderWriter (eval term) mempty
-  
-normalise :: ZTerm -> ZTerm
-normalise = fst . flip runReaderWriter mempty . eval
+evaluate :: ZTerm -> ZTerm
+evaluate = fst . flip runReaderWriter mempty . eval
 
 addFixedVars :: Set ZVar -> Eval a -> Eval a
 addFixedVars = local . Set.union

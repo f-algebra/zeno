@@ -11,7 +11,7 @@ import Zeno.Var ( ZVar, ZTerm, ZType, ZClause )
 import Zeno.Type ( typeOf )
 import Zeno.Parsing.Lisp ( Lisp (..) )
 
-import qualified Zeno.Simplifiers.Reducer as Reducer
+import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
@@ -86,7 +86,7 @@ parseTheory (LL decls) =
 
 parseTopLevel :: Lisp -> Zeno ()
 parseTopLevel (LL [LN "def", LN name, def]) = do
-  term <- runTermParser (Reducer.normalise <$> parseTerm def)
+  term <- runTermParser (Eval.evaluate <$> parseTerm def)
   Zeno.addDefinition name term
 parseTopLevel (LL ((LN "type"):(LN type_name):l_cons)) = do
   name <- Name.declare type_name
@@ -118,8 +118,8 @@ parseClause (LL [LN "all", LL [LN name, type_l], cls_l]) = do
   all_var <- Var.declare name var_type Var.Bound
   localDefinition name (Term.Var all_var) (parseClause cls_l)
 parseClause (LL [LN "=", t1_l, t2_l]) = do
-  t1 <- Reducer.normalise <$> parseTerm t1_l
-  t2 <- Reducer.normalise <$> parseTerm t2_l
+  t1 <- Eval.evaluate <$> parseTerm t1_l
+  t2 <- Eval.evaluate <$> parseTerm t2_l
   return (Clause.Clause mempty (Clause.Equal t1 t2))
 parseClause (LL cls_l)
   | length cls_l > 1 = do
