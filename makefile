@@ -1,5 +1,5 @@
 EXTS = -XMultiParamTypeClasses -XFlexibleContexts -XFlexibleInstances -XScopedTypeVariables -XTypeSynonymInstances -XViewPatterns -XTypeFamilies -XBangPatterns -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XDoRec
-FLAGS = -package ghc -threaded -fwarn-missing-signatures -funbox-strict-fields -hidir obj -odir obj -isrc -itest $(EXTS)
+FLAGS = -package ghc -threaded -funbox-strict-fields -hidir obj -odir obj -isrc -itest $(EXTS)
 POWER = -O2
 NORMAL = -O
 MAIN = src/Main.hs

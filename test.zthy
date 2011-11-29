@@ -1,9 +1,5 @@
-(type nat 0 (S nat))
+type nat = zero | succ nat;
+ 
+type list = nil | cons nat list;
 
-(fun (+ (nat nat nat)) x y .
-  case + x 
-    (0 y)
-    ((S x') . S (+ x' y)))
-    
-(prop +0 . all (x nat)
-  (= (+ x 0) x))
+
