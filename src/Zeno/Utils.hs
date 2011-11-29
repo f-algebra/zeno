@@ -280,6 +280,9 @@ xor True True = False
 xor False False = False
 xor _ _ = True
 
+newtype ReaderWriter r w a 
+  = ReaderWriter { runReaderWriter :: r -> (a, w) }
+  
 
 
 

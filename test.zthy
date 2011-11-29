@@ -2,4 +2,11 @@ type nat = zero | succ nat;
  
 type list = nil | cons nat list;
 
+let rec (add : nat -> nat -> nat) = 
+  fun (x : nat) ->
+  fun (y : nat) -> 
+    case x of
+      zero -> y
+    | succ x' -> succ (add x' y);
+    
 

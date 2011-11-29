@@ -3,7 +3,7 @@ module Zeno.Core (
   ZProofStep, ZCounterExample,
   initialState, emptyTheory,
   defineType, defineTerm, addConjecture,
-  lookupDefinition, lookupDataType
+  lookupTerm, lookupType
 ) where
 
 import Prelude ()
@@ -72,8 +72,8 @@ addConjecture :: MonadState ZenoState m => String -> ZClause -> m ()
 addConjecture name cls = modifyTheory $ \z -> z
   { conjectures = Map.insert name cls (conjectures z) }
   
-lookupDefinition :: MonadState ZenoState m => String -> m (Maybe ZTerm)
-lookupDefinition name = gets (Map.lookup name . definitions . theory)
+lookupTerm :: MonadState ZenoState m => String -> m (Maybe ZTerm)
+lookupTerm name = gets (Map.lookup name . definitions . theory)
 
-lookupDataType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
-lookupDataType name = gets (Map.lookup name . dataTypes . theory)
+lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
+lookupType name = gets (Map.lookup name . dataTypes . theory)

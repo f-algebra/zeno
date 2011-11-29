@@ -72,7 +72,7 @@ instance Show a => Show (Term a) where
       let (vars, rhs) = Term.flattenLam expr
           vars_s = intercalate " " (map show vars)
       rhs_s <- showTerm rhs
-      return $ "\\" ++ vars_s ++ " -> " ++ rhs_s
+      return $ "fun " ++ vars_s ++ " -> " ++ rhs_s
     showTerm (Term.Fix f e) = do
       e' <- showTerm e
       return $ "fix " ++ show f ++ " in " ++ e'
@@ -82,7 +82,7 @@ instance Show a => Show (Term a) where
       lhs' <- indent . showTerm $ lhs
       let lhs'' | Term.isVar lhs = lhs'
                 | otherwise = "(" ++ lhs' ++ ")"
-      return $ i ++ "case [" ++ show lbl ++ "] " ++ lhs'' ++ " of" ++ alts'
+      return $ i ++ "case " ++ lhs'' ++ " of" ++ alts'
     
 instance Show ZenoTheory where
   show thy = dtypes ++ defs ++ conjs

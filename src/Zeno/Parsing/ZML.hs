@@ -1,5 +1,5 @@
 module Zeno.Parsing.ZML (
-  readTypeDef, readLine
+  readTypeDef, readBinding, readLine
 ) where
 
 import Prelude ()
@@ -7,8 +7,9 @@ import Zeno.Prelude
 import Zeno.Utils
 import Zeno.Traversing
 import Zeno.Core ( Zeno )
-import Zeno.Var ( ZVar, ZTerm, ZType, ZClause, ZEquation )
+import Zeno.Var ( ZVar, ZTerm, ZType, ZAlt, ZClause, ZEquation )
 import Zeno.Type ( typeOf )
+import Zeno.Parsing.ZMLRaw ( RVar (..), RTerm, RAlt, RType, RTypeDef (..) )
 
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Name as Name
@@ -18,6 +19,10 @@ import qualified Zeno.Clause as Clause
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Parsing.ZMLRaw as Raw
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+
+type Parser = ReaderT (Map String ZTerm, Set ZVar) Zeno
 
 readLine :: String -> (Maybe (String, String), String)
 readLine str = 
@@ -28,32 +33,97 @@ readLine str =
   potential_line = dropWhile (not . Raw.isNameChar) str
 
 readTypeDef :: String -> Zeno ()
-readTypeDef = parseRTypeDef . Raw.parseTypeDef
+readTypeDef = runParser . parseRTypeDef . Raw.parseTypeDef
 
-parseRTypeDef :: Raw.RTypeDef -> Zeno ()
-parseRTypeDef (Raw.RTypeDef type_name type_cons) = do
+readBinding :: String -> Zeno ()
+readBinding (Raw.parseBinding -> (name, rterm)) = do
+  zterm <- runParser (parseRTerm rterm)
+  Zeno.defineTerm name zterm
+
+runParser :: Parser a -> Zeno a
+runParser = flip runReaderT (mempty, mempty)
+
+parseRTypeDef :: RTypeDef -> Parser ()
+parseRTypeDef (RTypeDef type_name type_cons) = do
   name <- Name.declare type_name
   rec let new_dtype = DataType.DataType name cons
       Zeno.defineType new_dtype
       cons <- mapM (parseCon (Type.Var new_dtype)) type_cons
   return ()
   where
-  parseCon :: ZType -> (String, Raw.RType) -> Zeno ZVar
+  parseCon :: ZType -> (String, RType) -> Parser ZVar
   parseCon result_type (con_name, rtype) = do
     con_type <- parseRType rtype
     new_con <- Var.declare con_name con_type Var.Constructor
     Zeno.defineTerm con_name (Term.Var new_con)
     return new_con
   
-parseRType :: Raw.RType -> Zeno ZType
+parseRType :: RType -> Parser ZType
 parseRType (Type.Var rtvar) = 
   lookupType rtvar
 parseRType (Type.Fun arg res) = 
   Type.Fun <$> parseRType arg <*> parseRType res
+  
+parseTypedRVar :: RVar -> Parser ZVar
+parseTypedRVar (RVar name (Just rtype)) = do
+  ztype <- parseRType rtype
+  Var.declare name ztype Var.Bound
+  
+parseRTerm :: RTerm -> Parser ZTerm
+parseRTerm (Term.Var var) = 
+  lookupTerm (varName var)
+parseRTerm (Term.App t1 t2) = 
+  Term.App <$> parseRTerm t1 <*> parseRTerm t2
+parseRTerm (Term.Lam typed_var rhs) = do
+  new_var <- parseTypedRVar typed_var
+  zhs <- localTerm (Raw.varName typed_var) (Term.Var new_var) 
+       $ parseRTerm rhs
+  return (Term.Lam new_var zhs)
+parseRTerm (Term.Fix typed_var rhs) = do
+  new_var <- parseTypedRVar typed_var
+  zhs <- localTerm (Raw.varName typed_var) (Term.Var new_var) 
+       $ withinFix new_var
+       $ parseRTerm rhs
+  return (Term.Fix new_var zhs)
+parseRTerm (Term.Cse _ _ rterm ralts) = do
+  name <- Name.invent
+  fixes <- asks snd
+  zterm <- parseRTerm rterm
+  zalts <- mapM parseRAlt ralts
+  return (Term.Cse name fixes zterm zalts)
+  where
+  parseRAlt :: RAlt -> Parser ZAlt
+  parseRAlt (Term.Alt rcon rargs rterm) = do
+    Just (Term.Var con_var) <- Zeno.lookupTerm (Raw.varName rcon)
+    let arg_types = (butlast . Type.flatten . Type.typeOf) con_var
+        arg_names = map varName rargs
+    arg_vars <- zipWithM boundVar arg_names arg_types
+    zterm <- localVars arg_names (map Term.Var arg_vars) (parseRTerm rterm) 
+    return (Term.Alt con_var arg_vars zterm)
+    where
+    boundVar name typ = Var.declare name typ Var.Bound
+    localVars names = appEndo . concatMap Endo . zipWith localTerm names
 
-lookupType :: String -> Zeno ZType
+lookupType :: String -> Parser ZType
 lookupType name = do
-  dt_lookup <- Zeno.lookupDataType name
+  dt_lookup <- Zeno.lookupType name
   case dt_lookup of
     Just dtype -> return (Type.Var dtype)
     Nothing -> error $ "Type not found: " ++ name
+    
+lookupTerm :: String -> Parser ZTerm
+lookupTerm name = do
+  mby_local <- asks (Map.lookup name . fst)
+  case mby_local of
+    Just def -> return def
+    Nothing -> do
+      mby_global <- Zeno.lookupTerm name
+      case mby_global of
+        Just def -> return def
+        Nothing -> error $ "Variable not found: " ++ name
+        
+localTerm :: String -> ZTerm -> Parser a -> Parser a
+localTerm name term = local (first (Map.insert name term))
+
+withinFix :: ZVar -> Parser a -> Parser a
+withinFix fix_var = local (second (Set.insert fix_var))

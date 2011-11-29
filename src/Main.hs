@@ -17,6 +17,7 @@ interpret str =
 
 command :: (String, String) -> Zeno ()
 command ("type", arg) = ZML.readTypeDef arg
+command ("let", arg) = ZML.readBinding arg
 
 main :: IO ()
 main = do 

@@ -1,6 +1,6 @@
 module Zeno.Name (
   Unique, Name, UniqueGen (..),
-  new, clone, invent, declare
+  new, clone, invent, declare, empty
 ) where
 
 import Prelude ()
@@ -62,4 +62,7 @@ new mby_label = do
   uni <- unique
   let label = maybe (show uni) id mby_label
   return (Name uni label)
+  
+empty :: Name
+empty = Name (Unique 0) ""
 
