@@ -1,9 +1,8 @@
 module Zeno.Core (
-  Zeno, ATP, ZenoState (..), ZenoTheory (..), DiscoveredLemma (..),
-  Prover, Simplifier, Disprover, Inventor, Generaliser,
+  Zeno, ZenoState (..), ZenoTheory (..),
   ZProofStep, ZCounterExample,
   initialState, emptyTheory,
-  addDataType, addDefinition, addConjecture,
+  defineType, defineTerm, addConjecture,
   lookupDefinition, lookupDataType
 ) where
 
@@ -18,19 +17,12 @@ import Zeno.ReaderWriter
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
-type ATP = ReaderWriter ZenoState [DiscoveredLemma]
 type Zeno = State ZenoState
 type StringMap = Map String
 
 type ZProofStep = String
 type ZProof = String
 type ZCounterExample = ZTermSubstitution
-
-type Prover = ZClause -> ATP (Maybe (ZProofStep, [ZClause]))
-type Simplifier = [ZClause] -> ZTerm -> ATP (Maybe ZTerm)
-type Disprover = ZClause -> ATP (Maybe ZCounterExample)
-type Inventor = [ZClause] -> ZTerm -> ZTerm -> ATP (Maybe ZTerm)
-type Generaliser = ZClause -> ATP (Maybe ZClause)
 
 data ZenoState
   = ZenoState         { uniqueGen :: !Unique,
@@ -68,12 +60,12 @@ initialState
 modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
 modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
 
-addDataType :: MonadState ZenoState m => ZDataType -> m ()
-addDataType dtype = modifyTheory $ \z -> z 
+defineType :: MonadState ZenoState m => ZDataType -> m ()
+defineType dtype = modifyTheory $ \z -> z 
   { dataTypes = Map.insert (show . DataType.name $ dtype) dtype (dataTypes z) }
       
-addDefinition :: MonadState ZenoState m => String -> ZTerm -> m ()
-addDefinition name expr = modifyTheory $ \z -> z
+defineTerm :: MonadState ZenoState m => String -> ZTerm -> m ()
+defineTerm name expr = modifyTheory $ \z -> z
   { definitions = Map.insert name expr (definitions z) }
   
 addConjecture :: MonadState ZenoState m => String -> ZClause -> m ()

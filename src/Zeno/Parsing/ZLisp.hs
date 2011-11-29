@@ -7,7 +7,7 @@ import Zeno.Prelude
 import Zeno.Utils
 import Zeno.Traversing
 import Zeno.Core ( Zeno )
-import Zeno.Var ( ZVar, ZTerm, ZType, ZClause )
+import Zeno.Var ( ZVar, ZTerm, ZType, ZClause, ZEquation )
 import Zeno.Type ( typeOf )
 import Zeno.Parsing.Lisp ( Lisp (..) )
 
@@ -27,7 +27,7 @@ import qualified Data.Map as Map
 type TermParser = ReaderT (Map String ZTerm, Set ZVar) Zeno
 
 parse :: String -> Zeno ()
-parse text = parseTheory (Lisp.parse text)
+parse text = parseTheory (Lisp.toLisp text)
 
 runTermParser :: TermParser a -> Zeno a
 runTermParser = flip runReaderT mempty
@@ -57,11 +57,6 @@ withinFix :: ZVar -> TermParser a -> TermParser a
 withinFix fix_var = local (second (Set.insert fix_var))
 
 transformZLisp :: Lisp -> Lisp
-transformZLisp (LL (LN "all":rest)) 
-  | length rest > 2 = foldr foldAll cls typed_vars
-  where
-  (typed_vars, cls) = takeLast rest
-  foldAll typed_var cls = LL [LN "all", typed_var, cls]
 transformZLisp (LL (LN "lam":rest)) 
   | length rest > 2 = foldr foldLam term typed_vars
   where
@@ -112,25 +107,33 @@ parseTopLevel (LL [LN "prop", LN name, cls_l]) = do
 parseTopLevel other = 
   error $ "Top level statement not recognized: " ++ show other
   
-parseClause :: Lisp -> TermParser ZClause
-parseClause (LL [LN "all", LL [LN name, type_l], cls_l]) = do
-  var_type <- lift (parseType type_l)
-  all_var <- Var.declare name var_type Var.Bound
-  localDefinition name (Term.Var all_var) (parseClause cls_l)
-parseClause (LL [LN "=", t1_l, t2_l]) = do
-  t1 <- Eval.evaluate <$> parseTerm t1_l
-  t2 <- Eval.evaluate <$> parseTerm t2_l
-  return (Clause.Clause mempty (Clause.Equal t1 t2))
-parseClause (LL cls_l)
-  | length cls_l > 1 = do
-    cqnt <- parseClause cqnt_l
-    ants <- mapM parseClause ants_l
-    return (foldr Clause.addAntecedent cqnt ants)
-  where
-  (ants_l, cqnt_l) = takeLast cls_l
-parseClause other =
-  error $ "Clause not recognized: " ++ show other
   
+parseClause :: Lisp -> TermParser ZClause
+parseClause (LL vars_then_body) = do
+  cls_body <- localVars 
+            $ mapM parseEquation 
+            $ Lisp.flatten cls_body_l
+  let (cls_antes, cls_consq) = takeLast cls_body
+  return (Clause.Clause cls_antes cls_consq)
+  where
+  (typed_vars, cls_body_l) = takeLast vars_then_body
+  
+  localVars :: TermParser a -> TermParser a
+  localVars = appEndo $ concatMap (Endo . localTypedVar) typed_vars
+  
+  localTypedVar :: Lisp -> TermParser a -> TermParser a
+  localTypedVar (LL [LN name, type_l]) action = do
+    var_type <- lift (parseType type_l)
+    var <- Var.declare name var_type Var.Bound
+    localDefinition name (Term.Var var) action
+  
+  parseEquation :: Lisp -> TermParser ZEquation
+  parseEquation (LL [LN "=", left_term_l, right_term_l]) = do
+    left_term <- parseTerm left_term_l
+    right_term <- parseTerm right_term_l
+    return (Clause.Equal left_term right_term)
+  parseEquation other = 
+    error $ "Equation expected in place of: " ++ show other
 
 parseType :: Lisp -> Zeno ZType
 parseType (LN name) = lookupType name
@@ -179,7 +182,6 @@ parseTerm (LL (LN "case":LN label:l_term:l_alts)) = do
       
     localVar :: (String, ZVar) -> TermParser a -> TermParser a
     localVar (name, var) = localDefinition name (Term.Var var)
-  
 parseTerm (LL l_terms) = 
   Term.unflattenApp <$> mapM parseTerm l_terms
   

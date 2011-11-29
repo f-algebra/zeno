@@ -16,7 +16,7 @@ data Equation a
   deriving ( Eq, Foldable )
 
 data Clause a
-  = Clause      { antecedents :: ![Clause a],
+  = Clause      { antecedents :: ![Equation a],
                   consequent :: !(Equation a) }
   deriving ( Eq, Foldable )
             
@@ -44,11 +44,11 @@ instance HasVariables (Clause a) where
     consVars = freeVars (consequent cls)
     antsVars = Set.unions $ map freeVars (antecedents cls)
     
-addAntecedent :: Clause a -> Clause a -> Clause a
+addAntecedent :: Equation a -> Clause a -> Clause a
 addAntecedent eq cs = cs 
   { antecedents = antecedents cs ++ [eq] }
   
-removeAntecedent :: Eq a => Clause a -> Clause a -> Clause a
+removeAntecedent :: Eq a => Equation a -> Clause a -> Clause a
 removeAntecedent eq cs = cs
   { antecedents = delete eq (antecedents cs) }
 
