@@ -1,10 +1,11 @@
 {
 module Zeno.Parsing.ZMLRaw ( 
-  RTypeDef (..), RVar (..), 
-  RType, RTerm, RAlt,
-  isNameChar, parseTypeDef, parseBinding
+  RTypeDef (..), RVar (..), RProp (..),
+  RType, RTerm, RAlt, RClause, REquation,
+  isNameChar, 
+  parseTypeDef, parseBinding, 
+  parseProp, parseTerm
 ) where
-
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Show
@@ -17,10 +18,13 @@ import qualified Zeno.Name as Name
 
 %name typeDef TypeDef
 %name binding Binding
+%name prop Prop
+%name term Term
+
 %tokentype { Token }
 
 %token
-  var         { TokenVar $$ }
+  name        { TokenName $$ }
   '|'         { TokenBar }
   ':'         { TokenType }
   '->'        { TokenArr }
@@ -35,61 +39,75 @@ import qualified Zeno.Name as Name
   'rec'       { TokenRec }
   'in'        { TokenIn }
   
-  
 %right '->'
     
 %%
   
 Type :: { RType }
-  : var                               { Type.Var $1 }
-  | Type '->' Type                    { Type.Fun $1 $3 }
+  : name                              { Type.Var $1 }
   | '(' Type ')'                      { $2 }
+  | Type '->' Type                    { Type.Fun $1 $3 }
   
-Types :: { [RType] }
-  : Types Type                        { $1 ++ [$2] }
-  | Type                              { [$1] }
+Types :: { [RType] } 
+  : Type                              { [$1] }
+  | Types Type                        { $1 ++ [$2] }
   
 TypeDef :: { RTypeDef }
-  : var '=' TypeDefCons               { RTypeDef $1
+  : name '=' TypeDefCons              { RTypeDef $1
                                           (map (mkTypeDefCon $1) $3) }
   
 TypeDefCon :: { (String, [RType]) }
-  : var Types                         { ($1, $2) }
-  | var                               { ($1, []) }
+  : name                              { ($1, []) }
+  | name Types                        { ($1, $2) }
+  
   
 TypeDefCons :: { [(String, [RType])] }
-  : TypeDefCons '|' TypeDefCon        { $1 ++ [$3] }
-  | TypeDefCon                        { [$1] }
+  : TypeDefCon                        { [$1] }
+  | TypeDefCons '|' TypeDefCon        { $1 ++ [$3] }
   
 Pattern :: { [RVar] }
-  : Pattern UntypedVar                { $1 ++ [$2] }
-  | UntypedVar                        { [$1] }
+  : UntypedVar                        { [$1] }
+  | Pattern UntypedVar                { $1 ++ [$2] }
   
 Matches :: { [RAlt] }
-  : Matches '|' Match                 { $1 ++ [$3] }
-  | Match                             { [$1] }
+  : Match                             { [$1] }
+  | Matches '|' Match                 { $1 ++ [$3] }
   
 Match :: { RAlt }
   : Pattern '->' Term                 { Term.Alt (head $1) (tail $1) $3 }
   
 TypedVar :: { RVar }
-  : '(' var ':' Type ')'              { RVar $2 (Just $4) }
+  : '(' name ':' Type ')'             { RVar $2 (Just $4) }
+  
+TypedVars :: { [RVar] }
+  :                                   { [] }
+  | TypedVars TypedVar                { $1 ++ [$2] }
   
 UntypedVar :: { RVar }
-  : var                               { RVar $1 Nothing }
+  : name                              { RVar $1 Nothing }
   
 Binding :: { (String, RTerm) } 
-  : var '=' Term                      { ($1, $3) }
+  : name '=' Term                     { ($1, $3) }
   | 'rec' TypedVar '=' Term           { (varName $2, Term.Fix $2 $4) }
   
 Term :: { RTerm }
-  : 'fun' TypedVar '->' Term          { Term.Lam $2 $4 }
+  : UntypedVar                        { Term.Var $1 }
+  | Term UntypedVar                   { Term.App $1 (Term.Var $2) }
+  | Term '(' Term ')'                 { Term.App $1 $3 }
+  | '(' Term ')'                      { $2 }
+  | 'fun' TypedVar '->' Term          { Term.Lam $2 $4 }
   | 'fix' TypedVar 'in' Term          { Term.Fix $2 $4 }
   | 'case' Term 'of' Matches          { Term.Cse Name.empty mempty $2 $4 }
-  | UntypedVar Term                   { Term.App (Term.Var $1) $2 }
-  | '(' Term ')' Term                 { Term.App $2 $4 }
-  | '(' Term ')'                      { $2 }
-  | UntypedVar                        { Term.Var $1 }
+  
+Prop :: { RProp }
+  : name TypedVars '=' Clause         { RProp $1 $2 $4 } 
+  
+Clause :: { RClause } 
+  : Clause '->' Equation              { Clause.Clause (Clause.flatten $1) $3 }
+  | Equation                          { Clause.Clause [] $1 }
+  
+Equation :: { REquation }
+  : Term '=' Term                     { Clause.Equal $1 $3 }
   
 {
 happyError :: [Token] -> a
@@ -98,6 +116,13 @@ happyError tokens = error $ "Parse error\n" ++ (show tokens)
 type RType = Type.Type String
 type RTerm = Term.Term RVar
 type RAlt = Term.Alt RVar
+type RClause = Clause.Clause RVar
+type REquation = Clause.Equation RVar
+
+data RProp
+  = RProp     { propName :: String,
+                propVars :: [RVar],
+                propClause :: RClause }
 
 data RVar 
   = RVar      { varName :: String,
@@ -114,7 +139,7 @@ mkTypeDefCon result_type (name, arg_types) =
 
 data Token
   = TokenBar
-  | TokenVar String
+  | TokenName String
   | TokenType
   | TokenArr
   | TokenOP
@@ -130,7 +155,7 @@ data Token
   deriving Show
   
 isNameChar :: Char -> Bool
-isNameChar c = isAlpha c || c `elem` "'_"
+isNameChar c = isAlphaNum c || c `elem` "'_"
   
 lexer :: String -> [Token]
 lexer [] = []
@@ -155,7 +180,7 @@ lexer (c:cs)
       ("let", rest) -> TokenLet : lexer rest
       ("rec", rest) -> TokenRec : lexer rest
       ("in", rest) -> TokenIn : lexer rest
-      (var, rest) -> TokenVar var : lexer rest
+      (name, rest) -> TokenName name : lexer rest
 lexer cs = error $ "Unrecognized symbol " ++ take 1 cs
 
 parseTypeDef :: String -> RTypeDef
@@ -163,6 +188,12 @@ parseTypeDef = typeDef . lexer
 
 parseBinding :: String -> (String, RTerm)
 parseBinding = binding . lexer
+
+parseProp :: String -> RProp
+parseProp = prop . lexer
+
+parseTerm :: String -> RTerm
+parseTerm = term . lexer
 
 instance Show RTypeDef where
   show (RTypeDef name cons) = 

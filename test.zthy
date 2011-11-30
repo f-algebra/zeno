@@ -1,4 +1,4 @@
-type nat = zero | succ nat;
+type nat = 0 | succ nat;
  
 type list = nil | cons nat list;
 
@@ -6,7 +6,9 @@ let rec (add : nat -> nat -> nat) =
   fun (x : nat) ->
   fun (y : nat) -> 
     case x of
-      zero -> y
+      0 -> y
     | succ x' -> succ (add x' y);
     
+prop add_0 (x : nat) = add x 0 = x;
 
+eval add 0 0;

@@ -1,5 +1,6 @@
 module Zeno.Parsing.ZML (
-  readTypeDef, readBinding, readLine
+  readTypeDef, readBinding, readProp, 
+  readLine, readTerm
 ) where
 
 import Prelude ()
@@ -9,7 +10,8 @@ import Zeno.Traversing
 import Zeno.Core ( Zeno )
 import Zeno.Var ( ZVar, ZTerm, ZType, ZAlt, ZClause, ZEquation )
 import Zeno.Type ( typeOf )
-import Zeno.Parsing.ZMLRaw ( RVar (..), RTerm, RAlt, RType, RTypeDef (..) )
+import Zeno.Parsing.ZMLRaw ( RVar (..), RTypeDef (..), RProp (..),
+                             RTerm, RAlt, RType, REquation, RClause )
 
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Name as Name
@@ -36,9 +38,24 @@ readTypeDef :: String -> Zeno ()
 readTypeDef = runParser . parseRTypeDef . Raw.parseTypeDef
 
 readBinding :: String -> Zeno ()
-readBinding (Raw.parseBinding -> (name, rterm)) = do
-  zterm <- runParser (parseRTerm rterm)
+readBinding text = runParser $ do
+  zterm <- parseRTerm rterm
   Zeno.defineTerm name zterm
+  where
+  (name, rterm) = Raw.parseBinding text
+  
+readProp :: String -> Zeno ()
+readProp text = runParser $ do
+  zvars <- mapM parseTypedRVar rvars
+  zcls <- localVars (var_names `zip` zvars) 
+        $ parseRClause rcls
+  Zeno.defineProp name zcls
+  where
+  RProp name rvars rcls = Raw.parseProp text
+  var_names = map Raw.varName rvars
+  
+readTerm :: String -> Zeno ZTerm
+readTerm = runParser . parseRTerm . Raw.parseTerm
 
 runParser :: Parser a -> Zeno a
 runParser = flip runReaderT (mempty, mempty)
@@ -57,17 +74,20 @@ parseRTypeDef (RTypeDef type_name type_cons) = do
     new_con <- Var.declare con_name con_type Var.Constructor
     Zeno.defineTerm con_name (Term.Var new_con)
     return new_con
+    
+parseRClause :: RClause -> Parser ZClause
+parseRClause (Clause.Clause antes consq) =
+  Clause.Clause <$> mapM parseREquation antes <*> parseREquation consq
+
+parseREquation :: REquation -> Parser ZEquation
+parseREquation (Clause.Equal rleft rright) = 
+  Clause.Equal <$> parseRTerm rleft <*> parseRTerm rright
   
 parseRType :: RType -> Parser ZType
 parseRType (Type.Var rtvar) = 
   lookupType rtvar
 parseRType (Type.Fun arg res) = 
   Type.Fun <$> parseRType arg <*> parseRType res
-  
-parseTypedRVar :: RVar -> Parser ZVar
-parseTypedRVar (RVar name (Just rtype)) = do
-  ztype <- parseRType rtype
-  Var.declare name ztype Var.Bound
   
 parseRTerm :: RTerm -> Parser ZTerm
 parseRTerm (Term.Var var) = 
@@ -98,12 +118,20 @@ parseRTerm (Term.Cse _ _ rterm ralts) = do
     let arg_types = (butlast . Type.flatten . Type.typeOf) con_var
         arg_names = map varName rargs
     arg_vars <- zipWithM boundVar arg_names arg_types
-    zterm <- localVars arg_names (map Term.Var arg_vars) (parseRTerm rterm) 
+    let named_vars = arg_names `zip` arg_vars
+    zterm <- localVars named_vars (parseRTerm rterm) 
     return (Term.Alt con_var arg_vars zterm)
     where
     boundVar name typ = Var.declare name typ Var.Bound
-    localVars names = appEndo . concatMap Endo . zipWith localTerm names
 
+parseTypedRVar :: RVar -> Parser ZVar
+parseTypedRVar (RVar name (Just rtype)) = do
+  ztype <- parseRType rtype
+  Var.declare name ztype Var.Bound
+    
+localVars :: [(String, ZVar)] -> Parser a -> Parser a
+localVars = appEndo . concatMap (Endo . uncurry localTerm . second Term.Var)
+  
 lookupType :: String -> Parser ZType
 lookupType name = do
   dt_lookup <- Zeno.lookupType name
@@ -127,3 +155,4 @@ localTerm name term = local (first (Map.insert name term))
 
 withinFix :: ZVar -> Parser a -> Parser a
 withinFix fix_var = local (second (Set.insert fix_var))
+

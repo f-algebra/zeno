@@ -39,11 +39,7 @@ instance Show a => Show (Equation a) where
   show (Clause.Equal l r) = show l ++ " = " ++ show r
 
 instance Show a => Show (Clause a) where
-  show cls = ants_s ++ (show . Clause.consequent) cls
-    where
-    ants = Clause.antecedents cls
-    ants_s  | null ants = ""
-            | otherwise = (intercalate ", " $ map show ants) ++ " ==> "
+  show = intercalate " ->\n  " . map show . Clause.flatten
               
 instance Show ZVar where
   show = show . Var.name 
@@ -76,7 +72,7 @@ instance Show a => Show (Term a) where
     showTerm (Term.Fix f e) = do
       e' <- showTerm e
       return $ "fix " ++ show f ++ " in " ++ e'
-    showTerm (Term.Cse lbl _ lhs alts) = do
+    showTerm (Term.Cse lbl _ lhs alts) = indent $ do
       i <- indentation
       alts' <- indent . concatMapM showAlt $ alts
       lhs' <- indent . showTerm $ lhs
@@ -85,28 +81,28 @@ instance Show a => Show (Term a) where
       return $ i ++ "case " ++ lhs'' ++ " of" ++ alts'
     
 instance Show ZenoTheory where
-  show thy = dtypes ++ defs ++ conjs
+  show thy = types ++ terms ++ conjs
     where
-    dtypes = Zeno.dataTypes thy 
+    types = Zeno.types thy 
       |> Map.elems 
-      |> concatMap showDataType
+      |> concatMap showType
       
-    defs = Zeno.definitions thy 
+    terms = Zeno.terms thy 
       |> Map.toList 
       |> filter (not . Term.isVar . snd) 
-      |> concatMap showLet
+      |> concatMap showTerm
       
-    conjs = Zeno.conjectures thy
+    conjs = Zeno.props thy
       |> Map.toList
       |> concatMap showProp
       
     showProp (name, cls) = 
       "\nprop " ++ name ++ " = " ++ show cls ++ "\n"
     
-    showLet (name, def) = 
+    showTerm (name, def) = 
       "\nlet " ++ name ++ " = " ++ show def ++ "\n"
     
-    showDataType dtype =
+    showType dtype =
       "\ntype " ++ show (DataType.name dtype) ++ " where" 
       ++ concatMap (("\n  " ++) . showTyped) (DataType.cons dtype) ++ "\n"
   

@@ -2,8 +2,9 @@ module Zeno.Core (
   Zeno, ZenoState (..), ZenoTheory (..),
   ZProofStep, ZCounterExample,
   initialState, emptyTheory,
-  defineType, defineTerm, addConjecture,
-  lookupTerm, lookupType
+  defineType, defineTerm, defineProp,
+  lookupTerm, lookupType,
+  println, flush
 ) where
 
 import Prelude ()
@@ -17,7 +18,6 @@ import Zeno.ReaderWriter
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
-type Zeno = State ZenoState
 type StringMap = Map String
 
 type ZProofStep = String
@@ -26,12 +26,13 @@ type ZCounterExample = ZTermSubstitution
 
 data ZenoState
   = ZenoState         { uniqueGen :: !Unique,
-                        theory :: !ZenoTheory }
+                        theory :: !ZenoTheory,
+                        output :: ![String] }
 
 data ZenoTheory 
-  = ZenoTheory        { definitions :: !(StringMap ZTerm),
-                        dataTypes :: !(StringMap ZDataType),
-                        conjectures :: !(StringMap ZClause),
+  = ZenoTheory        { terms :: !(StringMap ZTerm),
+                        types :: !(StringMap ZDataType),
+                        props :: !(StringMap ZClause),
                         theorems :: !(StringMap (ZClause, ZProof)) }
 
 data DiscoveredLemma 
@@ -47,33 +48,55 @@ instance UniqueGen ZenoState where
     
 emptyTheory :: ZenoTheory 
 emptyTheory
-  = ZenoTheory  { definitions = mempty,
-                  dataTypes = mempty,
-                  conjectures = mempty,
+  = ZenoTheory  { terms = mempty,
+                  types = mempty,
+                  props = mempty,
                   theorems = mempty }
    
 initialState :: ZenoState
 initialState 
   = ZenoState   { uniqueGen = mempty,
-                  theory = emptyTheory }
+                  theory = emptyTheory,
+                  output = mempty }
                   
 modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
 modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
 
 defineType :: MonadState ZenoState m => ZDataType -> m ()
 defineType dtype = modifyTheory $ \z -> z 
-  { dataTypes = Map.insert (show . DataType.name $ dtype) dtype (dataTypes z) }
+  { types = Map.insert (show . DataType.name $ dtype) dtype (types z) }
       
 defineTerm :: MonadState ZenoState m => String -> ZTerm -> m ()
 defineTerm name expr = modifyTheory $ \z -> z
-  { definitions = Map.insert name expr (definitions z) }
+  { terms = Map.insert name expr (terms z) }
   
-addConjecture :: MonadState ZenoState m => String -> ZClause -> m ()
-addConjecture name cls = modifyTheory $ \z -> z
-  { conjectures = Map.insert name cls (conjectures z) }
+defineProp :: MonadState ZenoState m => String -> ZClause -> m ()
+defineProp name cls = modifyTheory $ \z -> z
+  { props = Map.insert name cls (props z) }
   
 lookupTerm :: MonadState ZenoState m => String -> m (Maybe ZTerm)
-lookupTerm name = gets (Map.lookup name . definitions . theory)
+lookupTerm name = gets (Map.lookup name . terms . theory)
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
-lookupType name = gets (Map.lookup name . dataTypes . theory)
+lookupType name = gets (Map.lookup name . types . theory)
+
+println :: MonadState ZenoState m => String -> m ()
+println text = modify $ \z -> z { output = output z ++ [text] }
+
+flush :: MonadState ZenoState m => m [String]
+flush = do
+  out <- gets output
+  modify $ \z -> z { output = mempty }
+  return out
+  
+  
+newtype Zeno a
+  = Zeno              { runZeno :: ZenoState -> Either String (a, ZenoState) }
+
+?? OR ?? 
+
+type Zeno = ErrorT (State ZenoState)
+
+?? OR MAKE A CPS VERSION OF THE FIRST ONE ??
+http://www.haskell.org/haskellwiki/Performance/Monads
+

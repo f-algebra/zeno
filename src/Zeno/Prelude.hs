@@ -13,6 +13,7 @@ module Zeno.Prelude
   module Control.Monad.Identity,
   module Control.Monad.Trans.Maybe,
   module Control.Monad.Fix,
+  module Control.Monad.Error,
   module Control.Exception,
   module Data.Maybe,
   module Data.Either,
@@ -31,6 +32,7 @@ module Zeno.Prelude
   module Data.Text,
   module Debug.Trace,
   module System.Random,
+  module System.IO.Unsafe,
   
   (++), concat, intercalate, map, void,
   concatMap, concatMapM, partitionM,
@@ -59,6 +61,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.RWS ( RWS (..), RWST (..), execRWS, evalRWS )
 import Control.Monad.Identity ( Identity (..) )
 import Control.Monad.Fix
+import Control.Monad.Error ( ErrorT (..), Error (..), throwError, catchError )
 import Control.Exception ( assert )
 
 import Data.Maybe
@@ -84,6 +87,7 @@ import Data.String
 
 import Debug.Trace
 import System.Random
+import System.IO.Unsafe
 
 import qualified Data.Set as Set
 

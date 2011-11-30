@@ -1,6 +1,6 @@
 module Zeno.Clause (
   Equation (..), Clause (..), 
-  addAntecedent, removeAntecedent
+  addAntecedent, removeAntecedent, flatten
 ) where
 
 import Prelude ()
@@ -51,4 +51,7 @@ addAntecedent eq cs = cs
 removeAntecedent :: Eq a => Equation a -> Clause a -> Clause a
 removeAntecedent eq cs = cs
   { antecedents = delete eq (antecedents cs) }
+
+flatten :: Clause a -> [Equation a]
+flatten cls = antecedents cls ++ [consequent cls]
 
