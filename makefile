@@ -1,4 +1,4 @@
-EXTS = -XMultiParamTypeClasses -XFlexibleContexts -XFlexibleInstances -XScopedTypeVariables -XTypeSynonymInstances -XViewPatterns -XTypeFamilies -XBangPatterns -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XDoRec
+EXTS = -XMultiParamTypeClasses -XFlexibleContexts -XFlexibleInstances -XScopedTypeVariables -XTypeSynonymInstances -XViewPatterns -XTypeFamilies -XBangPatterns -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XDoRec -XRank2Types
 FLAGS = -package ghc -threaded -funbox-strict-fields -hidir obj -odir obj -isrc -itest $(EXTS)
 POWER = -O2
 NORMAL = -O

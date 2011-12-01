@@ -34,10 +34,12 @@ module Zeno.Prelude
   module System.Random,
   module System.IO.Unsafe,
   
+  Empty (..),
   (++), concat, intercalate, map, void,
   concatMap, concatMapM, partitionM,
   fromJustT, anyM, allM, findM, sortWith,
-  minimalBy, nubOrd, elemOrd, intersectOrd
+  minimalBy, nubOrd, elemOrd, intersectOrd,
+  fromRight, fromLeft
 )
 where
 
@@ -105,6 +107,9 @@ map = fmap
 concat :: Monoid m => [m] -> m
 concat = mconcat
 
+class Empty a where
+  empty :: a
+
 concatMap :: Monoid m => (a -> m) -> [a] -> m
 concatMap f = concat . map f
 
@@ -158,7 +163,11 @@ elemOrd x = Set.member x . Set.fromList
 
 intersectOrd :: Ord a => [a] -> [a] -> [a]
 intersectOrd xs ys = Set.toList 
-  $ Set.intersection (Set.fromList xs) (Set.fromList ys) 
-
+  $ Set.intersection (Set.fromList xs) (Set.fromList ys)
   
+fromRight :: Either a b -> b
+fromRight (Right b) = b
+
+fromLeft :: Either a b -> a
+fromLeft (Left a) = a
   

@@ -1,7 +1,6 @@
 module Zeno.Core (
-  Zeno, ZenoState (..), ZenoTheory (..),
+  Zeno (..), ZenoState (..), ZenoTheory (..),
   ZProofStep, ZCounterExample,
-  initialState, emptyTheory,
   defineType, defineTerm, defineProp,
   lookupTerm, lookupType,
   println, flush
@@ -45,19 +44,17 @@ instance UniqueGen ZenoState where
   takeUnique zeno = 
     let (new_uni, new_gen) = takeUnique (uniqueGen zeno)
     in (new_uni, zeno { uniqueGen = new_gen })
-    
-emptyTheory :: ZenoTheory 
-emptyTheory
-  = ZenoTheory  { terms = mempty,
-                  types = mempty,
-                  props = mempty,
-                  theorems = mempty }
    
-initialState :: ZenoState
-initialState 
-  = ZenoState   { uniqueGen = mempty,
-                  theory = emptyTheory,
-                  output = mempty }
+instance Empty ZenoTheory where
+  empty = ZenoTheory  { terms = mempty,
+                        types = mempty,
+                        props = mempty,
+                        theorems = mempty }
+   
+instance Empty ZenoState where
+  empty = ZenoState   { uniqueGen = mempty,
+                        theory = empty,
+                        output = mempty }
                   
 modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
 modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
@@ -89,14 +86,42 @@ flush = do
   modify $ \z -> z { output = mempty }
   return out
   
-  
+type ZenoError = String
+
 newtype Zeno a
-  = Zeno              { runZeno :: ZenoState -> Either String (a, ZenoState) }
+  = Zeno { runZeno :: ZenoState -> Either ZenoError (a, ZenoState) }
 
-?? OR ?? 
+instance Functor Zeno where
+  fmap f (Zeno m) = Zeno $ \s -> 
+    case m s of
+      Left err -> Left err
+      Right ~(a, s') -> Right (f a, s')
+      
+instance Applicative Zeno where
+  pure a = Zeno $ \s -> Right (a, s)
+  Zeno f <*> Zeno m = Zeno $ \s ->
+    case f s of 
+      Left err -> Left err
+      Right ~(g, s') -> map (first g) (m s')
 
-type Zeno = ErrorT (State ZenoState)
+instance Monad Zeno where
+  return = pure
+  Zeno m >>= f = Zeno $ \s -> 
+    case m s of
+      Left err -> Left err
+      Right ~(a, s') -> runZeno (f a) s'
 
-?? OR MAKE A CPS VERSION OF THE FIRST ONE ??
-http://www.haskell.org/haskellwiki/Performance/Monads
+instance MonadState ZenoState Zeno where
+  get = Zeno $ \s -> Right (s, s)
+  put s = Zeno $ \_ -> Right ((), s)
+  
+instance MonadError ZenoError Zeno where
+  throwError err = Zeno $ \s -> Left err
+  catchError (Zeno m) action = Zeno $ \s -> 
+    case m s of
+      Left err -> runZeno (action err) s
+      right -> right
+      
+instance MonadFix Zeno where
+  mfix f = Zeno $ \s -> fix $ \(Right ~(a, _)) -> runZeno (f a) s
 

@@ -13,17 +13,25 @@ import qualified Zeno.Parsing.ZML as ZML
 -- NEED TO MAKE ZENO A ERROR MONAD TOO
 
 zenoState :: IORef ZenoState
-zenoState = unsafePerformIO (newIORef Zeno.initialState)
+zenoState = unsafePerformIO (newIORef empty)
 
-runZeno :: Zeno a -> IO a
-runZeno zeno = do
-  (a, s) <- atomicModifyIORef zenoState (runState (runErrorT zeno))
-  case a of
-    Left err -> 
+runZeno :: a -> Zeno a -> IO a
+runZeno on_error zeno = do
+  either_err <- atomicModifyIORef zenoState modifyState
+  case either_err of
+    Left err -> do
+      putStrLn $ "Uncaught exception: " ++ show err
+      return on_error
+    Right a -> return a
+  where
+  modifyState st = 
+    case Zeno.runZeno zeno st of
+      Left err -> (st, Left err)
+      Right (a, st') -> (st', Right a)
 
 flush :: IO ()
 flush = do
-  output <- runZeno Zeno.flush
+  output <- runZeno [] Zeno.flush
   mapM_ putStrLn output
 
 interpret :: String -> IO ()
@@ -31,7 +39,7 @@ interpret str =
   case ZML.readLine str of
     (Nothing, _) -> return ()
     (Just cmd, rest) -> do
-      runZeno (command cmd) 
+      runZeno () (command cmd) 
       flush
       interpret rest
 
