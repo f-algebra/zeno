@@ -1,5 +1,4 @@
 type nat = 0 | succ nat;
- 
 type list = nil | cons nat list;
 
 let rec (add : nat -> nat -> nat) = 
@@ -9,6 +8,9 @@ let rec (add : nat -> nat -> nat) =
       0 -> y
     | succ x' -> succ (add x' y);
     
-prop add_0 (x : nat) = add x 0 = x;
+prop add_0 (x : nat) =
+  add x 0 = x;
 
 eval add 0 0;
+
+

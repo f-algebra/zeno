@@ -1,37 +1,26 @@
 module Main where
 
 import Prelude ()
-import Zeno.Utils ( flipPair )
 import Zeno.Prelude
+import Zeno.Utils ( flipPair )
 import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Show
 import Zeno.Evaluation
 
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML 
-
--- NEED TO MAKE ZENO A ERROR MONAD TOO
+import qualified Zeno.Engine.Simplifier as Simplifier
 
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
 
-runZeno :: a -> Zeno a -> IO a
-runZeno on_error zeno = do
-  either_err <- atomicModifyIORef zenoState modifyState
-  case either_err of
-    Left err -> do
-      putStrLn $ "Uncaught exception: " ++ show err
-      return on_error
-    Right a -> return a
-  where
-  modifyState st = 
-    case Zeno.runZeno zeno st of
-      Left err -> (st, Left err)
-      Right (a, st') -> (st', Right a)
+runZeno :: Zeno a -> IO a
+runZeno zeno = 
+  atomicModifyIORef zenoState (flipPair . runState zeno)
 
 flush :: IO ()
 flush = do
-  output <- runZeno [] Zeno.flush
+  output <- runZeno Zeno.flush
   mapM_ putStrLn output
 
 interpret :: String -> IO ()
@@ -39,7 +28,7 @@ interpret str =
   case ZML.readLine str of
     (Nothing, _) -> return ()
     (Just cmd, rest) -> do
-      runZeno () (command cmd) 
+      runZeno (command cmd) 
       flush
       interpret rest
 
@@ -50,6 +39,9 @@ command ("prop", arg) = ZML.readProp arg
 command ("eval", arg) = do
   term <- ZML.readTerm arg
   Zeno.println (show (evaluate term))
+command ("simplify", arg) = do
+  term <- ZML.readTerm arg
+  Zeno.println (show (Simplifier.run term))
 command (other, _) = 
   error $ "Command \"" ++ other ++ "\" not recognized."
 

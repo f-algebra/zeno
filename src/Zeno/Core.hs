@@ -1,6 +1,5 @@
 module Zeno.Core (
-  Zeno (..), ZenoState (..), ZenoTheory (..),
-  ZProofStep, ZCounterExample,
+  Zeno, ZenoState (..), ZenoTheory (..),
   defineType, defineTerm, defineProp,
   lookupTerm, lookupType,
   println, flush
@@ -8,20 +7,17 @@ module Zeno.Core (
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Var ( ZTerm, ZClause, ZDataType,
-                  ZTermSubstitution )
+import Zeno.Var ( ZTerm, ZClause, ZDataType )
 import Zeno.Parsing.Lisp ( Lisp )
 import Zeno.Name ( Unique, UniqueGen (..) )
-import Zeno.ReaderWriter
 
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
 type StringMap = Map String
+type ZProof = ()
 
-type ZProofStep = String
-type ZProof = String
-type ZCounterExample = ZTermSubstitution
+type Zeno = State ZenoState
 
 data ZenoState
   = ZenoState         { uniqueGen :: !Unique,
@@ -38,7 +34,7 @@ data DiscoveredLemma
   = DiscoveredLemma   { discoveredProperty :: !ZClause,
                         discoveredProof :: !ZProof,
                         discoveredReason :: !String }
-                        
+
 
 instance UniqueGen ZenoState where
   takeUnique zeno = 
@@ -55,7 +51,7 @@ instance Empty ZenoState where
   empty = ZenoState   { uniqueGen = mempty,
                         theory = empty,
                         output = mempty }
-                  
+
 modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
 modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
 
@@ -85,43 +81,3 @@ flush = do
   out <- gets output
   modify $ \z -> z { output = mempty }
   return out
-  
-type ZenoError = String
-
-newtype Zeno a
-  = Zeno { runZeno :: ZenoState -> Either ZenoError (a, ZenoState) }
-
-instance Functor Zeno where
-  fmap f (Zeno m) = Zeno $ \s -> 
-    case m s of
-      Left err -> Left err
-      Right ~(a, s') -> Right (f a, s')
-      
-instance Applicative Zeno where
-  pure a = Zeno $ \s -> Right (a, s)
-  Zeno f <*> Zeno m = Zeno $ \s ->
-    case f s of 
-      Left err -> Left err
-      Right ~(g, s') -> map (first g) (m s')
-
-instance Monad Zeno where
-  return = pure
-  Zeno m >>= f = Zeno $ \s -> 
-    case m s of
-      Left err -> Left err
-      Right ~(a, s') -> runZeno (f a) s'
-
-instance MonadState ZenoState Zeno where
-  get = Zeno $ \s -> Right (s, s)
-  put s = Zeno $ \_ -> Right ((), s)
-  
-instance MonadError ZenoError Zeno where
-  throwError err = Zeno $ \s -> Left err
-  catchError (Zeno m) action = Zeno $ \s -> 
-    case m s of
-      Left err -> runZeno (action err) s
-      right -> right
-      
-instance MonadFix Zeno where
-  mfix f = Zeno $ \s -> fix $ \(Right ~(a, _)) -> runZeno (f a) s
-
