@@ -1,6 +1,6 @@
 -- | Beta-reduction
 module Zeno.Evaluation (
-  evaluate
+  normalise
 ) where                    
 
 import Prelude ()
@@ -18,25 +18,26 @@ import qualified Data.Map as Map
 
 type Eval = ReaderWriter (Set ZVar) Any
 
-evaluate :: ZTerm -> ZTerm
-evaluate = fst . flip runReaderWriter mempty . eval
+normalise :: ZTerm -> ZTerm
+normalise = fst . flip runReaderWriter mempty . eval
 
-addFixedVars :: Set ZVar -> Eval a -> Eval a
-addFixedVars = local . Set.union
+addFixedVars :: [ZVar] -> Eval a -> Eval a
+addFixedVars = local . Set.union . Set.fromList
 
 eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
 eval (Term.Lam x t) = Term.Lam x <$> eval t
 eval (Term.Fix f t) = Term.Fix f <$> eval t
-eval (Term.Cse cse_name cse_fixed cse_of cse_alts) =
+eval (Term.Cse cse_fixed cse_of cse_alts) =
   addFixedVars cse_fixed $ do
+    cse_of' <- eval cse_of
     cse_alts' <- mapM evalAlt cse_alts
-    if not (Var.isConstructorTerm cse_of)
+    if not (Var.isConstructorTerm cse_of')
       then 
-        return (Term.Cse cse_name cse_fixed cse_of cse_alts')
+        return (Term.Cse cse_fixed cse_of' cse_alts')
       else do
         tell (Any True)
-        eval (matchAlt cse_of cse_alts')
+        eval (matchAlt cse_of' cse_alts')
   where
   evalAlt alt = do
     term' <- eval (Term.altTerm alt)

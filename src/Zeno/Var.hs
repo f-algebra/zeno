@@ -8,6 +8,7 @@ module Zeno.Var (
   substituteTakingSources,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
+  distinguishFixes,
   new, declare, invent, clone,
   mapUniversal, foldUniversal
 ) where
@@ -72,6 +73,17 @@ isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True
 isUniversal _ = False
 
+distinguishFixes :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
+distinguishFixes = mapWithinM distinguish
+  where
+  distinguish :: ZTerm -> m ZTerm
+  distinguish (Term.Fix var term) = do
+    new_var <- clone var
+    let new_term = replace var new_var term
+    return (Term.Fix new_var new_term)
+  distinguish other = 
+    return other
+
 new :: (MonadState g m, UniqueGen g) => 
   Maybe String -> ZType -> ZVarSort -> m ZVar
 new label typ srt = do
@@ -86,7 +98,7 @@ invent :: (MonadState g m, UniqueGen g) => ZType -> ZVarSort -> m ZVar
 invent = new Nothing
 
 clone :: (MonadState g m, UniqueGen g) => ZVar -> m ZVar
-clone var = invent (varType var) (sort var)
+clone var = declare (show (name var)) (varType var) (sort var)
 
 universalVariables :: Foldable f => f ZVar -> Set ZVar
 universalVariables = Set.filter isUniversal . Set.fromList . toList

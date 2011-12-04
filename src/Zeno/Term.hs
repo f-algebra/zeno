@@ -24,17 +24,16 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { caseOfName :: !Name,
-              caseOfFixes :: !(Set a),
+  | Cse     { caseOfFixes :: ![a],
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
-  deriving ( Eq, Ord, Foldable )
+  deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 data Alt a
   = Alt     { altCon :: !a,
               altVars :: ![a],
               altTerm :: !(Term a) }
-  deriving ( Eq, Ord, Foldable )
+  deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 type TermSubstitution a = Substitution (Term a) (Term a)
 
@@ -84,10 +83,10 @@ isNormal = Set.null . freeFixes
   freeFixes (App t1 t2) = freeFixes t1 `mappend` freeFixes t2
   freeFixes (Lam _ t) = freeFixes t
   freeFixes (Fix fix t) = Set.delete fix (freeFixes t)
-  freeFixes (Cse _ fixes term alts) = fixes `Set.union` inner
+  freeFixes (Cse fixes term alts) = Set.fromList fixes `Set.union` inner
     where
     inner = concatMap freeFixes (term : map altTerm alts)
-
+    
 fromVar :: Term a -> a
 fromVar (Var v) = v
 
@@ -134,9 +133,9 @@ instance Ord a => Unifiable (Term a) where
 instance WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
-  mapWithinM f (Cse id fxs lhs alts) =
-    f =<< return (Cse id fxs) `ap` mapWithinM f lhs 
-                              `ap` mapM (mapWithinM f) alts
+  mapWithinM f (Cse fxs lhs alts) =
+    f =<< return (Cse fxs) `ap` mapWithinM f lhs 
+                           `ap` mapM (mapWithinM f) alts
   mapWithinM f (Lam var rhs) =
     f =<< return (Lam var) `ap` mapWithinM f rhs
   mapWithinM f (Fix var rhs) =

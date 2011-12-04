@@ -1,27 +1,25 @@
 module Zeno.Core (
-  Zeno (..), ZenoState (..), ZenoTheory (..),
-  ZProofStep, ZCounterExample,
+  Zeno, ZenoState (..), ZenoTheory (..),
   defineType, defineTerm, defineProp,
   lookupTerm, lookupType,
-  println, flush
+  print, flush
 ) where
 
 import Prelude ()
-import Zeno.Prelude
+import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType,
-                  ZTermSubstitution )
+                  ZTermSubstitution, ZVar )
 import Zeno.Parsing.Lisp ( Lisp )
 import Zeno.Name ( Unique, UniqueGen (..) )
-import Zeno.ReaderWriter
 
+import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
 type StringMap = Map String
-
-type ZProofStep = String
 type ZProof = String
-type ZCounterExample = ZTermSubstitution
+
+type Zeno = State ZenoState
 
 data ZenoState
   = ZenoState         { uniqueGen :: !Unique,
@@ -71,57 +69,22 @@ defineProp :: MonadState ZenoState m => String -> ZClause -> m ()
 defineProp name cls = modifyTheory $ \z -> z
   { props = Map.insert name cls (props z) }
   
-lookupTerm :: MonadState ZenoState m => String -> m (Maybe ZTerm)
-lookupTerm name = gets (Map.lookup name . terms . theory)
+lookupTerm :: (Functor m, MonadState ZenoState m) => String -> m (Maybe ZTerm)
+lookupTerm name = do
+  maybe_term <- gets (Map.lookup name . terms . theory)
+  case maybe_term of
+    Nothing -> return Nothing
+    Just term -> Just <$> Var.distinguishFixes term
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
 lookupType name = gets (Map.lookup name . types . theory)
 
-println :: MonadState ZenoState m => String -> m ()
-println text = modify $ \z -> z { output = output z ++ [text] }
+print :: MonadState ZenoState m => String -> m ()
+print text = modify $ \z -> z { output = output z ++ [text] }
 
 flush :: MonadState ZenoState m => m [String]
 flush = do
   out <- gets output
   modify $ \z -> z { output = mempty }
   return out
-  
-type ZenoError = String
-
-newtype Zeno a
-  = Zeno { runZeno :: ZenoState -> Either ZenoError (a, ZenoState) }
-
-instance Functor Zeno where
-  fmap f (Zeno m) = Zeno $ \s -> 
-    case m s of
-      Left err -> Left err
-      Right ~(a, s') -> Right (f a, s')
-      
-instance Applicative Zeno where
-  pure a = Zeno $ \s -> Right (a, s)
-  Zeno f <*> Zeno m = Zeno $ \s ->
-    case f s of 
-      Left err -> Left err
-      Right ~(g, s') -> map (first g) (m s')
-
-instance Monad Zeno where
-  return = pure
-  Zeno m >>= f = Zeno $ \s -> 
-    case m s of
-      Left err -> Left err
-      Right ~(a, s') -> runZeno (f a) s'
-
-instance MonadState ZenoState Zeno where
-  get = Zeno $ \s -> Right (s, s)
-  put s = Zeno $ \_ -> Right ((), s)
-  
-instance MonadError ZenoError Zeno where
-  throwError err = Zeno $ \s -> Left err
-  catchError (Zeno m) action = Zeno $ \s -> 
-    case m s of
-      Left err -> runZeno (action err) s
-      right -> right
-      
-instance MonadFix Zeno where
-  mfix f = Zeno $ \s -> fix $ \(Right ~(a, _)) -> runZeno (f a) s
 

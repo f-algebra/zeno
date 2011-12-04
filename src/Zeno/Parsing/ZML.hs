@@ -105,12 +105,11 @@ parseRTerm (Term.Fix typed_var rhs) = do
        $ withinFix new_var
        $ parseRTerm rhs
   return (Term.Fix new_var zhs)
-parseRTerm (Term.Cse _ _ rterm ralts) = do
-  name <- Name.invent
-  fixes <- asks snd
+parseRTerm (Term.Cse _ rterm ralts) = do
+  fixes <- asks (Set.toList . snd)
   zterm <- parseRTerm rterm
   zalts <- mapM parseRAlt ralts
-  return (Term.Cse name fixes zterm zalts)
+  return (Term.Cse fixes zterm zalts)
   where
   parseRAlt :: RAlt -> Parser ZAlt
   parseRAlt (Term.Alt rcon rargs rterm) = do
