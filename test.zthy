@@ -1,0 +1,42 @@
+type bool = true | false;
+type nat = 0 | succ nat;
+type list = nil | cons nat list;
+
+let rec (add : nat -> nat -> nat) = 
+  fun (x : nat) ->
+  fun (y : nat) -> 
+    case x of
+      0 -> y
+    | succ x' -> succ (add x' y);
+  
+let rec (app : list -> list -> list) = 
+  fun (xs : list) ->
+  fun (ys : list) -> 
+    case xs of
+      nil -> ys
+    | cons x xs' -> cons x (app xs' ys);
+    
+let rec (rev : list -> list) = 
+  fun (xs : list) ->
+    case xs of
+      nil -> nil
+    | cons x xs' -> app (rev xs') (cons x nil);
+    
+let rec (leq : nat -> nat -> bool) = 
+  fun (x : nat) ->
+  fun (y : nat) -> 
+    case x of
+      0 -> true
+    | succ x' -> 
+        case y of
+          0 -> false
+        | succ y' -> leq x' y';
+    
+prop add_0 (x : nat) = 
+  add x 0 = x;
+  
+simplify
+  fun (xs : list) -> rev (rev xs);
+  
+simplify
+  fun (x : nat) -> leq x x;

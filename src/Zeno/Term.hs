@@ -125,12 +125,12 @@ instance Ord a => Unifiable (Term a) where
     | x1 == x2 = mempty
   unifier (Var x) expr =
     Unifier (Map.singleton x expr)
-  unifier _ _ = error "need to implement unification for case"  --NoUnifier
+  unifier _ _ = error "need to implement unification for case"  -- NoUnifier
   
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
 
-instance WithinTraversable (Term a) (Term a) where
+instance Ord a => WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
   mapWithinM f (Cse fxs lhs alts) =
@@ -142,10 +142,30 @@ instance WithinTraversable (Term a) (Term a) where
     f =<< return (Fix var) `ap` mapWithinM f rhs
   mapWithinM f expr =
     f =<< return expr
-
-instance WithinTraversable (Term a) (Alt a) where
+    
+  substitute sub term = 
+    tryReplace sub (subst term)
+    where
+    subst (Lam var rhs) = 
+      Lam var (substitute sub' rhs)
+      where sub' = removeVariable var sub
+    subst (Fix var rhs) =
+      Fix var (substitute sub' rhs)
+      where sub' = removeVariable var sub
+    subst (App lhs rhs) =
+      App (substitute sub lhs) (substitute sub rhs)
+    subst (Cse fxs term alts) = 
+      Cse fxs (substitute sub term) (map (substitute sub) alts)
+    subst other = other
+    
+instance Ord a => WithinTraversable (Term a) (Alt a) where
   mapWithinM f (Alt con binds rhs) = 
     return (Alt con binds) `ap` mapWithinM f rhs
+    
+  substitute sub (Alt con vars term) =
+    Alt con vars (substitute sub' term)
+    where
+    sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
     
 instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
   type SimpleType (Term a) = SimpleType a
@@ -159,6 +179,9 @@ instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
     | otherwise = t1r
     where
     Type.Fun t1a t1r = typeOf e1
+    
+removeVariable :: Ord a => a -> TermSubstitution a -> TermSubstitution a
+removeVariable var = Map.filterWithKey $ \k a -> not (var `elem` k || var `elem` a)
   
 isOperator :: String -> Bool
 isOperator | error "find where isOperator should go" = any (not . isNormalChar)
