@@ -11,10 +11,6 @@ import qualified Zeno.Engine.Deforester as Deforester
 import qualified Zeno.Simplifier as Simplifier
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML 
-<<<<<<< HEAD
-import qualified Zeno.Engine.Simplifier as Simplifier
-=======
->>>>>>> 7996c10bf5c7913cfb8e5f22f726d782e7355b49
 
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
@@ -43,12 +39,6 @@ command ("let", arg) = ZML.readBinding arg
 command ("prop", arg) = ZML.readProp arg
 command ("eval", arg) = do
   term <- ZML.readTerm arg
-<<<<<<< HEAD
-  Zeno.println (show (evaluate term))
-command ("simplify", arg) = do
-  term <- ZML.readTerm arg
-  Zeno.println (show (Simplifier.run term))
-=======
   Zeno.print (show (normalise term))
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
@@ -57,7 +47,6 @@ command ("simplify", arg) = do
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
       Just term' -> show term ++ "\nsimplified to\n" ++ show term'
->>>>>>> 7996c10bf5c7913cfb8e5f22f726d782e7355b49
 command (other, _) = 
   error $ "Command \"" ++ other ++ "\" not recognized."
 
