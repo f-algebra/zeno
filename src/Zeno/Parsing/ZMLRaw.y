@@ -97,7 +97,7 @@ Term :: { RTerm }
   | '(' Term ')'                      { $2 }
   | 'fun' TypedVar '->' Term          { Term.Lam $2 $4 }
   | 'fix' TypedVar 'in' Term          { Term.Fix $2 $4 }
-  | 'case' Term 'of' Matches          { Term.Cse empty mempty $2 $4 }
+  | 'case' Term 'of' Matches          { Term.Cse mempty $2 $4 }
   
 Prop :: { RProp }
   : name TypedVars '=' Clause         { RProp $1 $2 $4 } 

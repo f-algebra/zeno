@@ -59,7 +59,7 @@ instance Show a => Show (Term a) where
     showTerm (Term.App lhs rhs) = do
       lhs' <- (indent . showTerm) lhs
       rhs' <- (indent . showTerm) rhs
-      let lhs_s | Term.isVar lhs || Term.isApp lhs = lhs'
+      let lhs_s | Term.isVar lhs || Term.isApp lhs || Term.isFix lhs = lhs'
                 | otherwise = "(" ++ lhs' ++ ")"
           rhs_s | Term.isVar rhs = rhs' 
                 | otherwise = "(" ++ rhs' ++ ")"
@@ -69,10 +69,11 @@ instance Show a => Show (Term a) where
           vars_s = intercalate " " (map show vars)
       rhs_s <- showTerm rhs
       return $ "fun " ++ vars_s ++ " -> " ++ rhs_s
-    showTerm (Term.Fix f e) = do
+    showTerm (Term.Fix f e) = return (show f)
+      {- do
       e' <- showTerm e
-      return $ "fix " ++ show f ++ " in " ++ e'
-    showTerm (Term.Cse lbl _ lhs alts) = indent $ do
+      return $ "fix " ++ show f ++ " in " ++ e' -}
+    showTerm (Term.Cse _ lhs alts) = indent $ do
       i <- indentation
       alts' <- indent . concatMapM showAlt $ alts
       lhs' <- indent . showTerm $ lhs

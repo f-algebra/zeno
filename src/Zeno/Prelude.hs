@@ -60,7 +60,7 @@ import Control.Monad.Writer ( execWriter, runWriter, execWriterT,
   MonadWriter (..), Writer (..), WriterT (..) )
 import Control.Monad.List ( ListT (..) )
 import Control.Monad.Trans.Maybe
-import Control.Monad.RWS ( RWS (..), RWST (..), execRWS, evalRWS )
+import Control.Monad.RWS ( RWS (..), RWST (..), execRWS, evalRWS, runRWS )
 import Control.Monad.Identity ( Identity (..) )
 import Control.Monad.Fix
 import Control.Monad.Error ( ErrorT (..), Error (..), throwError, catchError )
@@ -75,10 +75,10 @@ import qualified Data.Set as Set
 import Data.IntSet ( IntSet )
 import Data.Traversable
 import Data.Foldable hiding ( concat, concatMap )
-import Data.List ( intersperse, unfoldr, partition
-  , isPrefixOf, isSuffixOf, isInfixOf, sort, sortBy, findIndex
-  , delete, elemIndices, intersect, union
-  , (\\), subsequences, isSuffixOf, deleteBy )
+import Data.List ( intersperse, unfoldr, partition,
+  isPrefixOf, isSuffixOf, isInfixOf, sort, sortBy, findIndex,
+  delete, elemIndices, intersect, union,
+  (\\), subsequences, isSuffixOf, deleteBy )
 import Data.IORef
 import Data.Char ( isAlpha, isDigit, isAlphaNum, isSpace, chr, ord )
 import Data.IntMap ( IntMap )

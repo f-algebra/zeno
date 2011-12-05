@@ -2,15 +2,17 @@ module Zeno.Core (
   Zeno, ZenoState (..), ZenoTheory (..),
   defineType, defineTerm, defineProp,
   lookupTerm, lookupType,
-  println, flush
+  print, flush
 ) where
 
 import Prelude ()
-import Zeno.Prelude
-import Zeno.Var ( ZTerm, ZClause, ZDataType )
+import Zeno.Prelude hiding ( print )
+import Zeno.Var ( ZTerm, ZClause, ZDataType,
+                  ZTermSubstitution, ZVar )
 import Zeno.Parsing.Lisp ( Lisp )
 import Zeno.Name ( Unique, UniqueGen (..) )
 
+import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
@@ -67,17 +69,22 @@ defineProp :: MonadState ZenoState m => String -> ZClause -> m ()
 defineProp name cls = modifyTheory $ \z -> z
   { props = Map.insert name cls (props z) }
   
-lookupTerm :: MonadState ZenoState m => String -> m (Maybe ZTerm)
-lookupTerm name = gets (Map.lookup name . terms . theory)
+lookupTerm :: (Functor m, MonadState ZenoState m) => String -> m (Maybe ZTerm)
+lookupTerm name = do
+  maybe_term <- gets (Map.lookup name . terms . theory)
+  case maybe_term of
+    Nothing -> return Nothing
+    Just term -> Just <$> Var.distinguishFixes term
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
 lookupType name = gets (Map.lookup name . types . theory)
 
-println :: MonadState ZenoState m => String -> m ()
-println text = modify $ \z -> z { output = output z ++ [text] }
+print :: MonadState ZenoState m => String -> m ()
+print text = modify $ \z -> z { output = output z ++ [text] }
 
 flush :: MonadState ZenoState m => m [String]
 flush = do
   out <- gets output
   modify $ \z -> z { output = mempty }
   return out
+
