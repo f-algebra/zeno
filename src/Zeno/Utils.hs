@@ -17,9 +17,6 @@ infixl 0 |>
 
 (|>) :: a -> (a -> b) -> b
 x |> f = f x
-
-traceMe :: Show a => String -> a -> a
-traceMe s x = trace (s ++ ": " ++ show x) x
   
 orderedSupersetOf :: Eq a => [a] -> [a] -> Bool
 orderedSupersetOf _ [] = True

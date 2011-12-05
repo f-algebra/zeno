@@ -8,6 +8,7 @@ import Zeno.Prelude
 import Zeno.ReaderWriter
 import Zeno.Var ( ZVar, ZTerm )
 import Zeno.Traversing
+import Zeno.Show
 
 import qualified Zeno.Clause as Clause
 import qualified Zeno.Var as Var

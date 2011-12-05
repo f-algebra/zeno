@@ -1,11 +1,10 @@
 module Zeno.Traversing (
   WithinTraversable (..), HasVariables (..),
-  Substitution,
-  substitute, replaceWithin, replaceManyWithin, 
+  Substitution, replaceWithin,
   withinList, strictlyWithinList,
   contains, containsStrictly,
   removeSupersets, removeSubsets,
-  showSubstitution
+  showSubstitution, tryReplace
 ) where
 
 import Prelude ()
@@ -31,22 +30,20 @@ class WithinTraversable t f where
   foldWithin :: Monoid m => (t -> m) -> f -> m
   foldWithin g = execWriter . mapWithinM (\t -> tell (g t) >> return t)
   
-substitute :: (WithinTraversable a f, Eq a) => 
-  Substitution a a -> f -> f
-substitute map = replaceManyWithin (Map.toList map)
+  substitute :: Ord t => Substitution t t -> f -> f
+  substitute map = mapWithin (\t -> Map.findWithDefault t t map)
 
 isOneToOne :: Ord b => Substitution a b -> Bool
 isOneToOne = not . containsDuplicates . Map.elems
 
+tryReplace :: Ord t => Substitution t t -> t -> t
+tryReplace map term = Map.findWithDefault term term map
+
 anyWithin :: forall t f .  WithinTraversable t f => (t -> Bool) -> f -> Bool
 anyWithin p = getAny . foldWithin (Any . p)
 
-replaceWithin :: (WithinTraversable t f, Eq t) => t -> t -> f -> f
-replaceWithin = genericReplace mapWithin
-
-replaceManyWithin :: (Foldable f, WithinTraversable a t, Eq a) => 
-  f (a, a) -> t -> t
-replaceManyWithin = genericReplaceMany mapWithin
+replaceWithin :: (WithinTraversable t f, Ord t) => t -> t -> f -> f
+replaceWithin from to = substitute (Map.singleton from to)
 
 withinList :: WithinTraversable t f => f -> [t]
 withinList = foldWithin return

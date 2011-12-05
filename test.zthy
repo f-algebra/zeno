@@ -22,7 +22,21 @@ let rec (rev : list -> list) =
       nil -> nil
     | cons x xs' -> app (rev xs') (cons x nil);
     
+let rec (leq : nat -> nat -> bool) = 
+  fun (x : nat) ->
+  fun (y : nat) -> 
+    case x of
+      0 -> true
+    | succ x' -> 
+        case y of
+          0 -> false
+        | succ y' -> leq x' y';
+    
 prop add_0 (x : nat) = 
   add x 0 = x;
   
-simplify fun (xs : list) -> rev (rev xs);
+simplify
+  fun (xs : list) -> rev (rev xs);
+  
+simplify
+  fun (x : nat) -> leq x x;

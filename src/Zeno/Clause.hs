@@ -20,13 +20,13 @@ data Clause a
                   consequent :: !(Equation a) }
   deriving ( Eq, Foldable )
             
-instance WithinTraversable (Term a) (Equation a) where
+instance Ord a => WithinTraversable (Term a) (Equation a) where
   mapWithinM f (Equal t1 t2) = do
     t1' <- mapWithinM f t1
     t2' <- mapWithinM f t2
     return (Equal t1' t2')
   
-instance WithinTraversable (Term a) (Clause a) where
+instance Ord a => WithinTraversable (Term a) (Clause a) where
   mapWithinM f (Clause conds eq) = do
     eq' <- mapWithinM f eq
     conds' <- mapM (mapWithinM f) conds

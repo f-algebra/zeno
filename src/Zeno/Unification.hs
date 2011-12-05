@@ -53,7 +53,7 @@ mergeUnifiers = foldl' addUni []
   where addUni subs NoUnifier = subs
         addUni subs (Unifier sub) = sub : subs
         
-applyUnification :: (WithinTraversable a f, Eq a) =>
+applyUnification :: (WithinTraversable a f, Ord a) =>
   Unification a a -> f -> f
 applyUnification NoUnifier = id
 applyUnification (Unifier sub) = substitute sub

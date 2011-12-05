@@ -39,7 +39,7 @@ module Zeno.Prelude
   concatMap, concatMapM, partitionM,
   fromJustT, anyM, allM, findM, sortWith,
   minimalBy, nubOrd, elemOrd, intersectOrd,
-  fromRight, fromLeft
+  fromRight, fromLeft, traceMe
 )
 where
 
@@ -170,4 +170,6 @@ fromRight (Right b) = b
 
 fromLeft :: Either a b -> a
 fromLeft (Left a) = a
-  
+
+traceMe :: Show a => String -> a -> a
+traceMe s x = trace (s ++ ": " ++ show x) x
