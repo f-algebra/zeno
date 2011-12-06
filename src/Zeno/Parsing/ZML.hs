@@ -1,6 +1,6 @@
 module Zeno.Parsing.ZML (
   readTypeDef, readBinding, readProp, 
-  readLine, readTerm
+  readLine, readTerm, readSpec
 ) where
 
 import Prelude ()
@@ -10,7 +10,7 @@ import Zeno.Traversing
 import Zeno.Core ( Zeno )
 import Zeno.Var ( ZVar, ZTerm, ZType, ZAlt, ZClause, ZEquation )
 import Zeno.Type ( typeOf )
-import Zeno.Parsing.ZMLRaw ( RVar (..), RTypeDef (..), RProp (..),
+import Zeno.Parsing.ZMLRaw ( RTypeDef (..), RProp, RVar (..),
                              RTerm, RAlt, RType, REquation, RClause )
 
 import qualified Zeno.Core as Zeno
@@ -46,17 +46,26 @@ readBinding text = runParser $ do
   
 readProp :: String -> Zeno ()
 readProp text = runParser $ do
-  zvars <- mapM parseTypedRVar rvars
-  zcls <- localVars (var_names `zip` zvars) 
-        $ parseRClause rcls
+  zcls <- parseRClause rcls
   Zeno.defineProp name zcls
   where
-  RProp name rvars rcls = Raw.parseProp text
-  var_names = map Raw.varName rvars
+  (name, rcls) = Raw.parseProp text
   
 readTerm :: String -> Zeno ZTerm
 readTerm = runParser . parseRTerm . Raw.parseTerm
 
+readSpec :: String -> Zeno (String, [ZTerm], ZTerm)
+readSpec (Raw.parseClause -> (vars, Clause.Clause [] (Clause.Equal left right)))
+  | not (null args) = 
+      runParser $ localTypedRVars vars $ do
+        args' <- mapM parseRTerm args
+        result <- parseRTerm right
+        return (Raw.varName func, args', result)
+  where
+  (Term.Var func):args = Term.flattenApp left
+readSpec arg = 
+  error $ "Invalid specification: " ++ arg
+  
 runParser :: Parser a -> Zeno a
 runParser = flip runReaderT (mempty, mempty)
 
@@ -76,8 +85,10 @@ parseRTypeDef (RTypeDef type_name type_cons) = do
     return new_con
     
 parseRClause :: RClause -> Parser ZClause
-parseRClause (Clause.Clause antes consq) =
-  Clause.Clause <$> mapM parseREquation antes <*> parseREquation consq
+parseRClause (rvars, Clause.Clause antes consq) =
+  localTypedRVars rvars
+    $ Clause.Clause <$> mapM parseREquation antes 
+                    <*> parseREquation consq
 
 parseREquation :: REquation -> Parser ZEquation
 parseREquation (Clause.Equal rleft rright) = 
@@ -130,6 +141,11 @@ parseTypedRVar (RVar name (Just rtype)) = do
     
 localVars :: [(String, ZVar)] -> Parser a -> Parser a
 localVars = appEndo . concatMap (Endo . uncurry localTerm . second Term.Var)
+
+localTypedRVars :: [RVar] -> Parser a -> Parser a
+localTypedRVars rvars parser = do
+  zvars <- mapM parseTypedRVar rvars
+  localVars (map Raw.varName rvars `zip` zvars) parser
   
 lookupType :: String -> Parser ZType
 lookupType name = do

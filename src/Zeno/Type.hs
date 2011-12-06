@@ -36,6 +36,10 @@ isFun :: Type a -> Bool
 isFun (Fun {}) = True
 isFun _ = False
 
+isVar :: Type a -> Bool
+isVar (Var {}) = True
+isVar _ = False
+
 returns :: Type a -> Type a
 returns = last . flatten
 

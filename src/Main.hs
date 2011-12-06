@@ -7,8 +7,8 @@ import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Show
 import Zeno.Evaluation ( normalise )
 
-import qualified Zeno.Engine.Deforester as Deforester
-import qualified Zeno.Simplifier as Simplifier
+import qualified Zeno.Engine.Simplifier as Simplifier
+import qualified Zeno.Engine.Inventor as Inventor
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML 
 
@@ -42,11 +42,18 @@ command ("eval", arg) = do
   Zeno.print (show (normalise term))
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
-  term' <- Simplifier.run (Deforester.run term)
+  term' <- Simplifier.run term
   Zeno.print $
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
       Just term' -> show term ++ "\nsimplified to\n" ++ show term'
+command ("invent", arg) = do
+  (func, args, res) <- ZML.readSpec arg
+  mby_def <- Inventor.run args res
+  Zeno.print $ 
+    case mby_def of
+      Nothing -> "Couldn't invent a definition for " ++ func
+      Just def -> "Found " ++ func ++ " = " ++ show def
 command (other, _) = 
   error $ "Command \"" ++ other ++ "\" not recognized."
 

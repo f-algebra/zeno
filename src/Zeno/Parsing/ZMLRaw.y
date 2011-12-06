@@ -1,11 +1,12 @@
 {
 module Zeno.Parsing.ZMLRaw ( 
-  RTypeDef (..), RVar (..), RProp (..),
+  RTypeDef (..), RVar (..), RProp,
   RType, RTerm, RAlt, RClause, REquation,
   isNameChar, 
   parseTypeDef, parseBinding, 
-  parseProp, parseTerm
+  parseProp, parseTerm, parseClause
 ) where
+
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Show
@@ -14,12 +15,14 @@ import qualified Zeno.Clause as Clause
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Name as Name
+
 }
 
 %name typeDef TypeDef
 %name binding Binding
 %name prop Prop
 %name term Term
+%name clause Clause
 
 %tokentype { Token }
 
@@ -34,6 +37,7 @@ import qualified Zeno.Name as Name
   'case'      { TokenCase }
   'of'        { TokenOf }
   'fun'       { TokenLambda }
+  'all'       { TokenAll }
   'fix'       { TokenFix }
   'let'       { TokenLet }
   'rec'       { TokenRec }
@@ -95,16 +99,20 @@ Term :: { RTerm }
   | Term UntypedVar                   { Term.App $1 (Term.Var $2) }
   | Term '(' Term ')'                 { Term.App $1 $3 }
   | '(' Term ')'                      { $2 }
-  | 'fun' TypedVar '->' Term          { Term.Lam $2 $4 }
+  | 'fun' TypedVars '->' Term         { Term.unflattenLam $2 $4 }
   | 'fix' TypedVar 'in' Term          { Term.Fix $2 $4 }
   | 'case' Term 'of' Matches          { Term.Cse mempty $2 $4 }
   
 Prop :: { RProp }
-  : name TypedVars '=' Clause         { RProp $1 $2 $4 } 
+  : name '=' Clause                   { ($1, $3) } 
   
-Clause :: { RClause } 
-  : Clause '->' Equation              { Clause.Clause (Clause.flatten $1) $3 }
+InnerClause :: { Clause.Clause RVar } 
+  : InnerClause '->' Equation         { Clause.Clause (Clause.flatten $1) $3 }
   | Equation                          { Clause.Clause [] $1 }
+  
+Clause :: { RClause }
+  : InnerClause                       { ([], $1) }
+  | 'all' TypedVars '->' InnerClause  { ($2, $4) }
   
 Equation :: { REquation }
   : Term '=' Term                     { Clause.Equal $1 $3 }
@@ -116,19 +124,13 @@ happyError tokens = error $ "Parse error\n" ++ (show tokens)
 type RType = Type.Type String
 type RTerm = Term.Term RVar
 type RAlt = Term.Alt RVar
-type RClause = Clause.Clause RVar
+type RClause = ([RVar], Clause.Clause RVar)
 type REquation = Clause.Equation RVar
-
-data RProp
-  = RProp     { propName :: String,
-                propVars :: [RVar],
-                propClause :: RClause }
-
-data RVar 
-  = RVar      { varName :: String,
+type RProp = (String, RClause)
+data RVar
+  = RVar      { varName :: String, 
                 varType :: Maybe RType }
-  deriving ( Eq, Ord, Show )
-
+                
 data RTypeDef 
   = RTypeDef  { typeName :: String,
                 typeCons :: [(String, RType)] }
@@ -148,6 +150,7 @@ data Token
   | TokenCase
   | TokenOf
   | TokenLambda
+  | TokenAll
   | TokenFix
   | TokenLet
   | TokenRec
@@ -180,6 +183,7 @@ lexer (c:cs)
       ("let", rest) -> TokenLet : lexer rest
       ("rec", rest) -> TokenRec : lexer rest
       ("in", rest) -> TokenIn : lexer rest
+      ("all", rest) -> TokenAll : lexer rest
       (name, rest) -> TokenName name : lexer rest
 lexer cs = error $ "Unrecognized symbol " ++ take 1 cs
 
@@ -194,6 +198,9 @@ parseProp = prop . lexer
 
 parseTerm :: String -> RTerm
 parseTerm = term . lexer
+
+parseClause :: String -> RClause
+parseClause = clause . lexer
 
 instance Show RTypeDef where
   show (RTypeDef name cons) = 
