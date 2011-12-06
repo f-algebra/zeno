@@ -17,7 +17,7 @@ import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
 type StringMap = Map String
-type ZProof = String
+type ZProof = ()
 
 type Zeno = State ZenoState
 
@@ -36,7 +36,7 @@ data DiscoveredLemma
   = DiscoveredLemma   { discoveredProperty :: !ZClause,
                         discoveredProof :: !ZProof,
                         discoveredReason :: !String }
-                        
+
 
 instance UniqueGen ZenoState where
   takeUnique zeno = 
@@ -53,7 +53,7 @@ instance Empty ZenoState where
   empty = ZenoState   { uniqueGen = mempty,
                         theory = empty,
                         output = mempty }
-                  
+
 modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
 modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
 
