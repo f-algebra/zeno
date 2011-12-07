@@ -27,7 +27,7 @@ data Term a
   | Cse     { caseOfFixes :: ![a],
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
-  deriving ( Eq, Ord, Functor, Foldable, Traversable )
+  deriving ( Eq, Ord, Functor, Traversable )
   
 data Alt a
   = Alt     { altCon :: !a,
@@ -47,7 +47,7 @@ instance HasVariables (Term a) where
   freeVars cse@(Cse {}) =
     freeVars (caseOfTerm cse) ++ altVars
     where
-    altVars = caseOfAlts cse |> map freeVars |> Set.unions
+    altVars = concatMap freeVars (caseOfAlts cse)
   
 instance HasVariables (Alt a) where
   type Var (Alt a) = a
@@ -108,6 +108,15 @@ flattenLam expr = ([], expr)
 
 unflattenLam :: [a] -> Term a -> Term a
 unflattenLam = flip (foldr Lam)
+
+instance Foldable Term where
+  foldMap f = go
+    where
+    go (Var x) = f x
+    go (App x y) = go x ++ go y
+    go (Lam x t) = f x ++ go t
+    go (Fix x t) = f x ++ go t
+    go (Cse _ t as) = go t ++ foldMap (foldMap f) as
 
 instance Ord a => Unifiable (Term a) where
   type UniTerm (Term a) = Term a
@@ -181,7 +190,8 @@ instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
     Type.Fun t1a t1r = typeOf e1
     
 removeVariable :: Ord a => a -> TermSubstitution a -> TermSubstitution a
-removeVariable var = Map.filterWithKey $ \k a -> not (var `elem` k || var `elem` a)
+removeVariable var = Map.filterWithKey $ \k a ->
+  not $ Set.member var $ freeVars k ++ freeVars a
   
 isOperator :: String -> Bool
 isOperator | error "find where isOperator should go" = any (not . isNormalChar)

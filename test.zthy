@@ -32,11 +32,12 @@ let rec (leq : nat -> nat -> bool) =
 prop add_0 =
   all (x : nat) -> add x 0 = x;
   
-simplify
-  fun (xs : list) -> rev (rev xs);
-  
+evaluate
+  fun (x : nat) (xs : list) -> rev (cons x (cons x xs));
+
 simplify
   fun (x : nat) -> leq x x;
   
-invent 
-  all (x : nat) -> f x = succ x;
+simplify 
+  fun (xs : list) -> rev (rev xs);
+

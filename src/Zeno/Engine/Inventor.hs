@@ -14,5 +14,5 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
 import qualified Data.Set as Set
 
-run :: [ZTerm] -> ZTerm -> Zeno (Maybe ZTerm)
+run :: MonadState ZenoState m => [ZTerm] -> ZTerm -> m (Maybe ZTerm)
 run args result = return Nothing

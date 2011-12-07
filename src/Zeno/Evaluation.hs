@@ -17,6 +17,7 @@ import qualified Zeno.Term as Term
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
+-- Can drop the Reader?
 type Eval = ReaderWriter (Set ZVar) Any
 
 normalise :: ZTerm -> ZTerm
@@ -27,8 +28,8 @@ addFixedVars = local . Set.union . Set.fromList
 
 eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
-eval (Term.Lam x t) = Term.Lam x <$> eval t
-eval (Term.Fix f t) = Term.Fix f <$> eval t
+eval (Term.Lam x t) = Term.Lam x <$> eval t  
+eval (Term.Fix f t) = Term.Fix f <$> return t
 eval (Term.Cse cse_fixed cse_of cse_alts) =
   addFixedVars cse_fixed $ do
     cse_of' <- eval cse_of
@@ -73,6 +74,7 @@ eval other = do
           then did_nothing
           else do
             tell (Any True) 
-            return unrolled'
+            eval unrolled'
   evalApp app = 
     return (Term.unflattenApp app)
+

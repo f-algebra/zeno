@@ -4,19 +4,23 @@ module Zeno.Engine.Simplifier (
 
 import Prelude ()
 import Zeno.Prelude
+import Zeno.Utils ( replace )
 import Zeno.Traversing
 import Zeno.Core ( ZenoState )
 import Zeno.Evaluation ( normalise )
-import Zeno.Var ( ZTerm, ZVar, ZAlt )
+import Zeno.Var ( ZTerm, ZVar, ZAlt, ZEquation ) 
 import Zeno.Type ( typeOf )
 import Zeno.Show
 
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
+import qualified Zeno.Clause as Clause
 import qualified Zeno.Type as Type
 import qualified Zeno.Engine.Inventor as Inventor
+
 import qualified Data.Set as Set
+import qualified Data.Monoid as Monoid
 
 run :: MonadState ZenoState m => ZTerm -> m (Maybe ZTerm)
 run term = do
@@ -44,45 +48,72 @@ isFixed var = asks (Set.member var)
 type Deforest = RWS DFEnv () ZenoState
 
 data DFEnv 
-  = DFEnv     { dfVar :: ZVar,
-                dfArgs :: Map ZVar [ZVar],
-                dfRemoving :: ZVar,
-                dfResult :: ZTerm }
-                
-possibleResults :: Deforest [ZTerm]
-possibleResults = do
-  args <- asks dfArgs
-  result <- asks dfResult
-  
+  = DFEnv     { dfFixVar :: !ZVar,
+                dfRewrites :: ![(Set ZVar, ZEquation)] }
                 
 caseSplit :: ZVar -> [ZVar] -> Deforest a -> Deforest a
-caseSplit split_var con_args deforest = do
-  old_args <- asks dfArgs
-  let new_args = map maybeAddArgs old_args
-  local (\env -> env { dfArgs = new_args }) deforest
+caseSplit split_var con_args = local $ \env ->
+  env { dfRewrites = concatMap split (dfRewrites env) }
   where
-  rec_args = Set.fromList $ filter ((== typeOf split_var) . typeOf) con_args
+  rec_args = filter ((== typeOf split_var) . typeOf) con_args
   
-  maybeAddArgs var_set
-    | Set.member split_var var_set = Set.union rec_args var_set
-    | otherwise = var_set
+  split rewrite@(free_vars, Clause.Equal from to)
+    | Set.member split_var free_vars = map splitOn rec_args
+    | otherwise = [rewrite]
+    where
+    splitOn new_var = (free_vars', Clause.Equal from' to')
+      where
+      free_vars' = 
+        Set.insert new_var
+        $ Set.delete split_var 
+        $ free_vars
+      from' = replace split_var new_var from
+      to' = replace split_var new_var to
 
-
+attemptRewrite :: ZTerm -> Deforest ZTerm
+attemptRewrite term 
+  | not (Type.isVar (typeOf term)) = return term
+  | otherwise = do
+      rewrites <- asks dfRewrites
+      case Monoid.getFirst (concatMap attempt rewrites) of
+        Nothing -> return term
+        Just new_term -> return new_term
+  where
+  attempt :: (Set ZVar, ZEquation) -> Monoid.First ZTerm
+  attempt (free_vars, Clause.Equal from to) = Monoid.First $ do
+    guard $ free_vars `Set.isSubsetOf` Var.freeZVars term
+    guard $ from == term
+    return to
+      
 deforest :: ZTerm -> Deforest ZTerm
 deforest (Term.Lam x t) = 
-  Term.Lam x <$> deforest t
-deforest (Term.Cse fxs term alts) = do 
-  term' <- deforest term
+  Term.Lam x <$> deforest t 
+  
+deforest top_term@(Term.Cse fxs cse_term alts) = do 
+  cse_term' <- deforest cse_term
   alts' <- mapM deforestAlt alts
-  let new_cse = Term.Cse fxs term' alts'
-  removing <- asks dfRemoving
-  if not (removing `elem` new_cse)
-  then return new_cse
-  else do
-    mby_invented <- Inventor.run ..?
+  let new_cse = Term.Cse fxs cse_term' alts'
+  old_fix <- asks dfFixVar
+  if old_fix `elem` new_cse
+  then attemptRewrite new_cse
+  else return new_cse
   where
-  deforestAlt (Term.Alt con vars term) = 
-    Term.Alt con vars <$> deforest term
+  deforestAlt (Term.Alt con vars alt_term) =
+    maybeSplit $ Term.Alt con vars <$> deforest alt_term 
+    where
+    maybeSplit
+      | Term.isVar cse_term = caseSplit (Term.fromVar cse_term) vars
+      | otherwise = id
+      
+deforest app@(Term.App fun arg) = do 
+  new_app <- Term.App <$> deforest fun <*> deforest arg
+  old_fix <- asks dfFixVar
+  if old_fix `elem` new_app
+  then attemptRewrite new_app
+  else return new_app
+
+deforest other = 
+  return other
 
   
 expand :: ZTerm -> Expand ZTerm         
@@ -131,25 +162,28 @@ expand app@(Term.App {}) =
       else do
         expanded <- expand normalised
         state <- get
-        new_var <- Var.invent fun_type Var.Bound
-        let (term', state', ()) = runRWS (deforest expanded) (makeDFEnv new_var) state
+        new_var <- Var.declare var_name fun_type Var.Bound
+        let new_term = Term.unflattenApp $ map Term.Var (new_var : free_vars)
+            (term', state', ()) = runRWS (deforest expanded) (makeDFEnv new_term) state
         if fix_var `elem` term'
         then return expanded
         else do
+          success
           put state'
           let new_fix = Term.Fix new_var (Term.unflattenLam free_vars term')
           (return . Term.unflattenApp) (new_fix : map Term.Var free_vars) 
     where
-    unrolled_fix = replaceWithin (Term.Var fix_var) fun fix_term
-    normalised = normalise $ Term.unflattenApp (unrolled_fix : args)
-    free_vars = toList (freeVars app :: Set ZVar)
+    unrolled = replaceWithin (Term.Var fix_var) fun fix_term
+    normalised = normalise $ Term.unflattenApp (unrolled : args)
+    free_vars_set = Var.freeZVars app
+    free_vars = toList free_vars_set
     fun_type = Type.unflatten $ (map typeOf free_vars) ++ [typeOf app]
+    var_name = "[" ++ (intercalate " " . map show) free_vars 
+      ++ " -> " ++ show app ++ "]"
     
-    makeDFEnv new_var = DFEnv 
-      { dfVar = new_var,
-        dfArgs = map Set.singleton free_vars,
-        dfRemoving = fix_var,
-        dfResult = app }
+    makeDFEnv new_term = DFEnv
+      { dfFixVar = fix_var,
+        dfRewrites = [(free_vars_set, Clause.Equal app new_term)] }
 
   expandApp app = 
     return (Term.unflattenApp app)

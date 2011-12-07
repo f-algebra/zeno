@@ -12,6 +12,7 @@ import Zeno.Var ( ZTerm, ZClause, ZDataType,
 import Zeno.Parsing.Lisp ( Lisp )
 import Zeno.Name ( Unique, UniqueGen (..) )
 
+import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
@@ -59,7 +60,7 @@ modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
 
 defineType :: MonadState ZenoState m => ZDataType -> m ()
 defineType dtype = modifyTheory $ \z -> z 
-  { types = Map.insert (show . DataType.name $ dtype) dtype (types z) }
+  { types = Map.insert (Name.label . DataType.name $ dtype) dtype (types z) }
       
 defineTerm :: MonadState ZenoState m => String -> ZTerm -> m ()
 defineTerm name expr = modifyTheory $ \z -> z

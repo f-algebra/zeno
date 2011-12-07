@@ -1,7 +1,7 @@
 module Zeno.Type (
   Type (..), Typed (..), 
   unflatten, flatten,
-  isFun, fromVar, returns
+  isFun, isVar, fromVar, returns
 ) where
 
 import Prelude ()

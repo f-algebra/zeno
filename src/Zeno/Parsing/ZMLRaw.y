@@ -75,6 +75,7 @@ Pattern :: { [RVar] }
   
 Matches :: { [RAlt] }
   : Match                             { [$1] }
+  | '|' Match                         { [$2] }
   | Matches '|' Match                 { $1 ++ [$3] }
   
 Match :: { RAlt }
@@ -162,6 +163,11 @@ isNameChar c = isAlphaNum c || c `elem` "'_"
   
 lexer :: String -> [Token]
 lexer [] = []
+lexer ('/':'*':cs) = lexer (commentEnd cs)
+  where
+  commentEnd [] = []
+  commentEnd ('*':'/':cs) = cs
+  commentEnd (c:cs) = commentEnd cs
 lexer (' ':cs) = lexer cs
 lexer ('\n':cs) = lexer cs
 lexer ('-':'>':cs) = TokenArr : lexer cs

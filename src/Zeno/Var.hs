@@ -8,7 +8,7 @@ module Zeno.Var (
   substituteTakingSources,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
-  distinguishFixes,
+  distinguishFixes, freeZVars,
   new, declare, invent, clone,
   mapUniversal, foldUniversal
 ) where
@@ -72,6 +72,9 @@ isConstructorTerm =
 isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True
 isUniversal _ = False
+
+freeZVars :: (HasVariables a, Var a ~ ZVar) => a -> Set ZVar
+freeZVars = Set.filter (not . isConstructor) . freeVars
 
 distinguishFixes :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
 distinguishFixes = mapWithinM distinguish
@@ -147,5 +150,5 @@ substituteTakingSources sub = mapWithin $ \from ->
   case Map.lookup from sub of
     Nothing -> from
     Just to -> addSources (allSources from) to
-
-
+    
+    

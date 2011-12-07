@@ -52,7 +52,7 @@ instance Show a => Show (Term a) where
       i <- indentation
       rhs_s <- indent $ showTerm rhs
       let con_s = show con ++ concatMap ((" " ++) . show) binds
-      return $ i ++ "  " ++ con_s ++ " -> " ++ rhs_s
+      return $ i ++ "| " ++ con_s ++ " -> " ++ rhs_s
     
     showTerm :: Show a => Term a -> Indented String
     showTerm (Term.Var var) = (return . stripModuleName . show) var
@@ -79,7 +79,7 @@ instance Show a => Show (Term a) where
       lhs' <- indent . showTerm $ lhs
       let lhs'' | Term.isVar lhs = lhs'
                 | otherwise = "(" ++ lhs' ++ ")"
-      return $ i ++ "case" ++ show fxs ++ " " ++ lhs'' ++ " of" ++ alts'
+      return $ i ++ "case " ++ lhs'' ++ " of" ++ alts'
      
 instance Show ZenoTheory where
   show thy = types ++ terms ++ conjs

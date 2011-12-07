@@ -37,7 +37,7 @@ command :: (String, String) -> Zeno ()
 command ("type", arg) = ZML.readTypeDef arg
 command ("let", arg) = ZML.readBinding arg
 command ("prop", arg) = ZML.readProp arg
-command ("eval", arg) = do
+command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))
 command ("simplify", arg) = do

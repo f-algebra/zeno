@@ -1,6 +1,6 @@
 module Zeno.Name (
   Unique, Name, UniqueGen (..),
-  new, clone, invent, declare
+  new, clone, invent, declare, label
 ) where
 
 import Prelude ()
@@ -10,7 +10,7 @@ newtype Unique = Unique { runUnique :: Int }
   deriving ( Eq, Ord )
 
 data Name = Name  { nameId :: !Unique,
-                    nameLabel :: !String }
+                    label :: !String }
 
 class UniqueGen g where
   takeUnique :: g -> (Unique, g)
@@ -35,7 +35,7 @@ instance Show Unique where
       in c : intToChars (n `div` 26)
 
 instance Show Name where
-  show = nameLabel
+  show = label
 
 instance Monoid Unique where
   mempty = Unique 0
@@ -49,7 +49,7 @@ unique = do
   return uni
   
 clone :: (UniqueGen g, MonadState g m) => Name -> m Name
-clone = declare . nameLabel
+clone = declare . label
 
 invent :: (UniqueGen g, MonadState g m) => m Name
 invent = new Nothing
