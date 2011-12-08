@@ -42,14 +42,14 @@ command ("evaluate", arg) = do
   Zeno.print (show (normalise term))
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
-  term' <- Simplifier.run term
+  term' <- runMaybeT (Simplifier.run term)
   Zeno.print $
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
       Just term' -> show term ++ "\nsimplified to\n" ++ show term'
 command ("invent", arg) = do
   (func, args, res) <- ZML.readSpec arg
-  mby_def <- Inventor.run args res
+  mby_def <- runMaybeT (Inventor.run args res)
   Zeno.print $ 
     case mby_def of
       Nothing -> "Couldn't invent a definition for " ++ func

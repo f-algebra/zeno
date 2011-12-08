@@ -38,6 +38,6 @@ evaluate
 simplify
   fun (x : nat) -> leq x x;
   
-simplify 
-  fun (xs : list) -> rev (rev xs);
+evaluate 
+  fun (xs : list) (x : nat) -> rev (app (rev xs) (cons x nil));
 

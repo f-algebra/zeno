@@ -22,15 +22,15 @@ import qualified Zeno.Engine.Inventor as Inventor
 import qualified Data.Set as Set
 import qualified Data.Monoid as Monoid
 
-run :: MonadState ZenoState m => ZTerm -> m (Maybe ZTerm)
+run :: (MonadState ZenoState m, MonadPlus m) => ZTerm -> m ZTerm
 run term = do
   state <- get
   let (term', state', any) = runRWS (expand term) mempty state
   if not (getAny any) 
-  then return Nothing
+  then mzero
   else do
     put state'
-    return (Just term')
+    return term'
     
 
 type Expand = RWS (Set ZVar) Any ZenoState
@@ -75,15 +75,22 @@ attemptRewrite term
   | not (Type.isVar (typeOf term)) = return term
   | otherwise = do
       rewrites <- asks dfRewrites
-      case Monoid.getFirst (concatMap attempt rewrites) of
+      first_rewrite <- concatMapM attempt rewrites
+      case Monoid.getFirst first_rewrite of
         Nothing -> return term
         Just new_term -> return new_term
   where
-  attempt :: (Set ZVar, ZEquation) -> Monoid.First ZTerm
-  attempt (free_vars, Clause.Equal from to) = Monoid.First $ do
-    guard $ free_vars `Set.isSubsetOf` Var.freeZVars term
-    guard $ from == term
-    return to
+  attempt :: (Set ZVar, ZEquation) -> Deforest (Monoid.First ZTerm)
+  attempt (free_vars, Clause.Equal from to) = 
+    fmap Monoid.First $ runMaybeT $ do
+      guard $ free_vars `Set.isSubsetOf` Var.freeZVars term
+      if from == term
+      then return to
+      else do
+        invention <- Inventor.run [from] term
+        return 
+          $ normalise 
+          $ Term.App invention to
       
 deforest :: ZTerm -> Deforest ZTerm
 deforest (Term.Lam x t) = 

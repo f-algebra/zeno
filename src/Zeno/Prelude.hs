@@ -31,7 +31,6 @@ module Zeno.Prelude
   module Data.Function,
   module Data.Text,
   module Debug.Trace,
-  module System.Random,
   module System.IO.Unsafe,
   
   Empty (..),
@@ -85,10 +84,9 @@ import Data.IntMap ( IntMap )
 import Data.IntSet ( IntSet )
 import Data.Function ( on )
 import Data.Text ( Text )
-import Data.String
+import Data.String 
 
 import Debug.Trace
-import System.Random
 import System.IO.Unsafe
 
 import qualified Data.Set as Set

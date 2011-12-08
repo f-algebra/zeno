@@ -12,5 +12,5 @@ import qualified Zeno.Evaluation as Eval
 
 type ZCounterExample = ZTermSubstitution
 
-run :: ZClause -> Zeno (Maybe ZCounterExample)
+run :: (MonadState ZenoState m, MonadPlus m) => ZClause -> m ZCounterExample
 run = undefined

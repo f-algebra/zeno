@@ -9,7 +9,6 @@ import Prelude ()
 import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType,
                   ZTermSubstitution, ZVar )
-import Zeno.Parsing.Lisp ( Lisp )
 import Zeno.Name ( Unique, UniqueGen (..) )
 
 import qualified Zeno.Name as Name
