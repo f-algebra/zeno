@@ -101,7 +101,7 @@ deforest top_term@(Term.Cse fxs cse_term alts) = do
   alts' <- mapM deforestAlt alts
   let new_cse = Term.Cse fxs cse_term' alts'
   old_fix <- asks dfFixVar
-  if old_fix `elem` new_cse
+  if old_fix `elem` Term.IgnoreAnnotations new_cse
   then attemptRewrite new_cse
   else return new_cse
   where
@@ -115,7 +115,7 @@ deforest top_term@(Term.Cse fxs cse_term alts) = do
 deforest app@(Term.App fun arg) = do 
   new_app <- Term.App <$> deforest fun <*> deforest arg
   old_fix <- asks dfFixVar
-  if old_fix `elem` new_app
+  if old_fix `elem` Term.IgnoreAnnotations new_app
   then attemptRewrite new_app
   else return new_app
 
@@ -123,7 +123,7 @@ deforest other =
   return other
 
   
-expand :: ZTerm -> Expand ZTerm         
+expand :: ZTerm -> Expand ZTerm
 expand (Term.Lam x t) = 
   Term.Lam x <$> expand t
   
@@ -172,12 +172,14 @@ expand app@(Term.App {}) =
         new_var <- Var.declare var_name fun_type Var.Bound
         let new_term = Term.unflattenApp $ map Term.Var (new_var : free_vars)
             (term', state', ()) = runRWS (deforest expanded) (makeDFEnv new_term) state
-        if fix_var `elem` term'
+        if fix_var `elem` Term.IgnoreAnnotations term'
         then return expanded
         else do
           success
           put state'
-          let new_fix = Term.Fix new_var (Term.unflattenLam free_vars term')
+          -- Need to replace the old annotations
+          let new_term = replace fix_var new_var term'
+              new_fix = Term.Fix new_var (Term.unflattenLam free_vars new_term)
           (return . Term.unflattenApp) (new_fix : map Term.Var free_vars) 
     where
     unrolled = replaceWithin (Term.Var fix_var) fun fix_term

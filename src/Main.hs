@@ -55,7 +55,8 @@ command ("invent", arg) = do
       Nothing -> "Couldn't invent a definition for " ++ func
       Just def -> "Found " ++ func ++ " = " ++ show def
 command (other, _) = 
-  error $ "Command \"" ++ other ++ "\" not recognized."
+  return () 
+  -- error $ "Command \"" ++ other ++ "\" not recognized."
 
 main :: IO ()
 main = do 

@@ -1,7 +1,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Zeno.Term (
   Term (..), Alt (..),
-  TermSubstitution,
+  TermSubstitution, IgnoreAnnotations (..),
   isVar, fromVar, isApp, isCse, isLam, isFix,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
   function, isNormal
@@ -27,7 +27,7 @@ data Term a
   | Cse     { caseOfFixes :: ![a],
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
-  deriving ( Eq, Ord, Functor, Traversable )
+  deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 data Alt a
   = Alt     { altCon :: !a,
@@ -36,6 +36,10 @@ data Alt a
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 type TermSubstitution a = Substitution (Term a) (Term a)
+
+-- | A 'Foldable' instance which does not include annotations
+newtype IgnoreAnnotations a 
+  = IgnoreAnnotations { includeAnnotations :: Term a }
 
 instance HasVariables (Term a) where
   type Var (Term a) = a
@@ -109,14 +113,14 @@ flattenLam expr = ([], expr)
 unflattenLam :: [a] -> Term a -> Term a
 unflattenLam = flip (foldr Lam)
 
-instance Foldable Term where
-  foldMap f = go
+instance Foldable IgnoreAnnotations where
+  foldMap f = go . includeAnnotations
     where
     go (Var x) = f x
     go (App x y) = go x ++ go y
     go (Lam x t) = f x ++ go t
     go (Fix x t) = f x ++ go t
-    go (Cse _ t as) = go t ++ foldMap (foldMap f) as
+    go (Cse _ t as) = go t ++ foldMap (go . altTerm) as
 
 instance Ord a => Unifiable (Term a) where
   type UniTerm (Term a) = Term a

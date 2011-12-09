@@ -28,7 +28,7 @@ addFixedVars = local . Set.union . Set.fromList
 
 eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
-eval (Term.Lam x t) = Term.Lam x <$> eval t  
+eval (Term.Lam x t) = Term.Lam x <$> eval t
 eval (Term.Fix f t) = Term.Fix f <$> return t
 eval (Term.Cse cse_fixed cse_of cse_alts) =
   addFixedVars cse_fixed $ do

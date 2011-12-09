@@ -14,6 +14,13 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
 import qualified Data.Set as Set
 
+
+
 run :: (MonadState ZenoState m, MonadPlus m) => 
   [ZTerm] -> ZTerm -> m ZTerm
-run args result = mzero
+run args result = do
+  
+  where
+  free_vars = concatMap freeZVars (result : args)
+  
+
