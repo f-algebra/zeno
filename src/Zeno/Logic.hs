@@ -1,4 +1,4 @@
-module Zeno.Clause (
+module Zeno.Logic (
   Equation (..), Clause (..), 
   addAntecedent, removeAntecedent, flatten
 ) where
