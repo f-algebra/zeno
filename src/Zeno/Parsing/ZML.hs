@@ -30,9 +30,12 @@ readLine :: String -> (Maybe (String, String), String)
 readLine str = 
   case span (/= ';') potential_line of
     ([], rest) -> (Nothing, rest)
-    (line, rest) -> (Just (span Raw.isNameChar line), rest)
+    (line, rest) -> 
+      let (cmd, args) = span Raw.isNameChar line
+      in (Just (cmd, removeWS args), rest)
   where
   potential_line = dropWhile (not . Raw.isNameChar) str
+  removeWS = dropWhile (`elem` " \n\t")
 
 readTypeDef :: String -> Zeno ()
 readTypeDef = runParser . parseRTypeDef . Raw.parseTypeDef
@@ -116,11 +119,12 @@ parseRTerm (Term.Fix typed_var rhs) = do
        $ withinFix new_var
        $ parseRTerm rhs
   return (Term.Fix new_var zhs)
-parseRTerm (Term.Cse _ rterm ralts) = do
+parseRTerm (Term.Cse _ _ rterm ralts) = do
+  cse_name <- Name.invent
   fix <- asks snd
   zterm <- parseRTerm rterm
   zalts <- mapM parseRAlt ralts
-  return (Term.Cse fix zterm zalts)
+  return (Term.Cse cse_name fix zterm zalts)
   where
   parseRAlt :: RAlt -> Parser ZAlt
   parseRAlt (Term.Alt rcon rargs rterm) = do

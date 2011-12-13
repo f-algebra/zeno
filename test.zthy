@@ -20,6 +20,15 @@ let rec (rev : list -> list) =
       nil -> nil
     | cons x xs' -> app (rev xs') (cons x nil);
     
+let rec (rev2 : list -> list) = 
+  fun (xs : list) -> 
+    case xs of
+    | nil -> nil
+    | cons y ys -> 
+        case (rev2 ys) of
+        | nil -> cons y nil
+        | cons z zs -> cons z (app zs (cons y nil));
+    
 let rec (leq : nat -> nat -> bool) = 
   fun (x : nat) (y : nat) -> 
     case x of
@@ -32,12 +41,15 @@ let rec (leq : nat -> nat -> bool) =
 prop add_0 =
   all (x : nat) -> add x 0 = x;
   
+prop revfalse = 
+  all (xs : list) -> rev xs = xs;
+  
+check add_0;
+check revfalse;
+
 evaluate
   fun (x : nat) (xs : list) -> rev (cons x (cons x xs));
-
-simplify
-  fun (x : nat) -> leq x x;
   
 simplify 
-  fun (xs : list) (x : nat) -> rev (app (rev xs) (cons x nil));
+  fun (xs : list) -> rev2 xs;
 

@@ -1,5 +1,4 @@
--- |A load of random stuff from various Haskell projects, 
--- most of this is unused by Zeno.
+-- |A load of random stuff from various Haskell projects.
 module Zeno.Utils where
 
 import Prelude ()

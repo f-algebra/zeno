@@ -2,7 +2,7 @@ module Zeno.Core (
   Zeno, ZenoState (..), ZenoTheory (..),
   ZProof,
   defineType, defineTerm, defineProp,
-  lookupTerm, lookupType,
+  lookupTerm, lookupType, lookupProp,
   print, flush
 ) where
 
@@ -79,6 +79,9 @@ lookupTerm name = do
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
 lookupType name = gets (Map.lookup name . types . theory)
+
+lookupProp :: MonadState ZenoState m => String -> m (Maybe ZClause)
+lookupProp name = gets (Map.lookup name . props . theory)
 
 print :: MonadState ZenoState m => String -> m ()
 print text = modify $ \z -> z { output = output z ++ [text] }

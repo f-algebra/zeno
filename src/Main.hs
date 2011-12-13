@@ -4,11 +4,14 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Utils ( flipPair )
 import Zeno.Core ( ZenoState, Zeno )
+import Zeno.Var ( ZTerm )
 import Zeno.Show
 import Zeno.Evaluation ( normalise )
 
 import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Inventor as Inventor
+import qualified Zeno.Engine.Checker as Checker
+
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML 
 
@@ -46,7 +49,7 @@ command ("simplify", arg) = do
   Zeno.print $
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
-      Just (term', prove_me) -> 
+      Just (term', prove_me) ->
         show term ++ "\n\nsimplifies to\n\n" ++ showWithDefinitions term'
         ++ "\n\nif the following hold\n\n" ++ (intercalate "\n\n" . map show) prove_me
 command ("invent", arg) = do
@@ -56,6 +59,13 @@ command ("invent", arg) = do
     case mby_def of
       Nothing -> "Couldn't invent a definition for " ++ func
       Just def -> "Found " ++ func ++ " = " ++ show def
+command ("check", arg) = do
+  Just prop <- Zeno.lookupProp arg
+  mby_cex <- runMaybeT (Checker.run prop)
+  Zeno.print $ 
+    case mby_cex of
+      Nothing -> "Could not find counter-example."
+      Just cex -> showSubstitution cex
 command (other, _) = 
   return () 
   -- error $ "Command \"" ++ other ++ "\" not recognized."

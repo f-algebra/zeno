@@ -6,7 +6,7 @@ module Zeno.Traversing (
   withinList, strictlyWithinList,
   contains, containsStrictly,
   removeSupersets, removeSubsets,
-  showSubstitution, tryReplace
+  tryReplace
 ) where
 
 import Prelude ()
@@ -18,12 +18,7 @@ import qualified Data.Set as Set
 
 type Substitution = Map
 
-showSubstitution :: (Show k, Show v) => Substitution k v -> String
-showSubstitution (Map.toList -> subs) =
-  "[ " ++ (intercalate "; " . map showSub) subs ++ " ]"
-  where showSub (k, v) = show k ++ " -> " ++ show v
-
-class WithinTraversable t f | f -> t where
+class WithinTraversable t f where
   mapWithinM :: Monad m => (t -> m t) -> f -> m f
   
   mapWithin :: (t -> t) -> f -> f

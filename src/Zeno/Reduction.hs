@@ -28,7 +28,7 @@
 -- @
 
 module Zeno.Reduction (
-  reduce
+  reduce, Reduction (..)
 ) where
 
 import Prelude ()
@@ -76,13 +76,16 @@ instance Reducible ZClause where
   
 instance Reducible ZEquation where
   reduce (Logic.Equal t1 t2) 
-    | Var.isConstructor t1_fun && Var.isConstructor t2_fun =
-      if t1_fun == t2_fun
-      then ReducedTo $ zipWith Logic.Equal t1_args t2_args
+    | Term.Var fun_var1 <- fun1
+    , Term.Var fun_var2 <- fun2
+    , Var.isConstructor fun_var1
+    , Var.isConstructor fun_var2 =
+      if fun_var1 == fun_var2
+      then ReducedTo $ zipWith Logic.Equal args1 args2
       else ReducedToFalse
     where
-    Term.Var t1_fun : t1_args = Term.flattenApp t1
-    Term.Var t2_fun : t2_args = Term.flattenApp t2
+    fun1 : args1 = Term.flattenApp t1
+    fun2 : args2 = Term.flattenApp t2
   
   reduce (Logic.Equal t1@(Term.Lam x1 _) t2@(Term.Lam x2 _)) =
     ReducedTo 

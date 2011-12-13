@@ -1,5 +1,5 @@
 module Zeno.Show (
-  showTyped, showWithDefinitions
+  showTyped, showWithDefinitions, showSubstitution
 ) where
 
 import Prelude ()
@@ -74,7 +74,7 @@ instance Show a => Show (Term a) where
       {- do
       e' <- showTerm e
       return $ "fix " ++ show f ++ " in " ++ e' -}
-    showTerm (Term.Cse fxs lhs alts) = indent $ do
+    showTerm (Term.Cse _ _ lhs alts) = indent $ do
       i <- indentation
       alts' <- concatMapM showAlt $ alts
       lhs' <- indent . showTerm $ lhs
@@ -112,7 +112,7 @@ showTyped :: (Show a, Typed a, Show (Type (SimpleType a))) => a -> String
 showTyped x = show x ++ " : " ++ show (typeOf x)
 
 showWithDefinitions :: forall a t .
-  (WithinTraversable (Term a) t, Show a, Show t) => t -> String
+  (WithinTraversable (Term a) (t a), Show a, Show (t a)) => t a -> String
 showWithDefinitions has_terms = show has_terms ++ "\nwhere\n" ++ defs
   where
   defs = intercalate "\n"                
@@ -125,3 +125,8 @@ showWithDefinitions has_terms = show has_terms ++ "\nwhere\n" ++ defs
   collectDefs other = mempty
   
   showDef (name, def) = name ++ " = " ++ def
+  
+showSubstitution :: (Show k, Show v) => Substitution k v -> String
+showSubstitution (Map.toList -> subs) =
+  "[ " ++ (intercalate "; " . map showSub) subs ++ " ]"
+  where showSub (k, v) = show k ++ " -> " ++ show v

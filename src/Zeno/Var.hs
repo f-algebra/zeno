@@ -10,7 +10,8 @@ module Zeno.Var (
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
   new, declare, invent, clone,
-  mapUniversal, foldUniversal
+  mapUniversal, foldUniversal,
+  instantiateTerm, recursiveArguments
 ) where
 
 import Prelude ()
@@ -26,6 +27,7 @@ import Zeno.Traversing
 
 import qualified Zeno.Name as Name
 import qualified Zeno.Term as Term
+import qualified Zeno.Type as Type
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -80,12 +82,32 @@ distinguishFixes :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTe
 distinguishFixes = mapWithinM distinguish
   where
   distinguish :: ZTerm -> m ZTerm
+  distinguish cse@(Term.Cse {}) = do
+    new_name <- Name.invent
+    return $ cse { Term.caseOfName = new_name }
   distinguish (Term.Fix var term) = do
     new_var <- clone var
     let new_term = replace var new_var term
     return (Term.Fix new_var new_term)
   distinguish other = 
     return other
+    
+instantiateTerm :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
+instantiateTerm term
+  | Type.isVar (typeOf term) = return term
+instantiateTerm term = do
+  new_arg <- invent arg_type (Universal mempty)
+  instantiateTerm (Term.App term (Term.Var new_arg))
+  where
+  Type.Fun arg_type _ = typeOf term
+  
+recursiveArguments :: ZTerm -> [ZTerm]
+recursiveArguments term 
+  | not (Term.isApp term) = []
+  | otherwise = filter ((== typ) . typeOf) args
+  where
+  typ = typeOf term
+  args = tail (Term.flattenApp term)
 
 new :: (MonadState g m, UniqueGen g) => 
   Maybe String -> ZType -> ZVarSort -> m ZVar

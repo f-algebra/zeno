@@ -12,6 +12,7 @@ import Zeno.Var ( ZTerm, ZVar, ZAlt, ZEquation, ZClause )
 import Zeno.Type ( typeOf )
 import Zeno.Show
 
+import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
@@ -47,28 +48,29 @@ expand :: ZTerm -> Expand ZTerm
 expand (Term.Lam x t) = 
   Term.Lam x <$> expand t
   
-expand term@(Term.Cse outer_fx outer_term outer_alts)
-  | Term.isCse outer_term = expand new_term
+expand term@(Term.Cse outer_name outer_fx outer_term outer_alts)
+  | Term.isCse outer_term = do
+    new_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
+    expand 
+      $ outer_term { Term.caseOfAlts = new_alts,
+                     Term.caseOfFix = outer_fx }
   where
-  new_term =
-    outer_term { Term.caseOfAlts = map pushIntoAlt (Term.caseOfAlts outer_term),
-                 Term.caseOfFix = outer_fx }
-  
   inner_fx = Term.caseOfFix outer_term 
     
-  pushIntoAlt :: ZAlt -> ZAlt
-  pushIntoAlt alt = alt { Term.altTerm = new_term }
-    where
-    new_term = Term.Cse inner_fx (Term.altTerm alt) outer_alts
+  pushIntoAlt :: MonadState ZenoState m => ZAlt -> m ZAlt
+  pushIntoAlt alt = do
+    cse_name <- Name.invent
+    let new_term = Term.Cse cse_name inner_fx (Term.altTerm alt) outer_alts
+    return $ alt { Term.altTerm = new_term }
 
-expand term@(Term.Cse cse_fix cse_of cse_alts) = 
+expand term@(Term.Cse cse_name cse_fix cse_of cse_alts) = 
   fixed cse_fix $ do
     cse_of' <- expand cse_of
     if Term.isCse cse_of'
     then expand $ term { Term.caseOfTerm = cse_of' } 
     else do
       cse_alts' <- mapM (expandAlt cse_of') cse_alts
-      return $ Term.Cse cse_fix cse_of' cse_alts'
+      return $ Term.Cse cse_name cse_fix cse_of' cse_alts'
   where
   expandAlt :: ZTerm -> ZAlt -> Expand ZAlt
   expandAlt cse_of (Term.Alt con vars term) =
@@ -120,7 +122,7 @@ expand original_term@(Term.App {}) =
       where
       up (Term.Lam x t) = Term.Lam x (up t)
       up (Term.App l r) = Term.App (up l) (up r)
-      up (Term.Cse _ t ts) = Term.Cse (Just new_var) (up t) (map upA ts)
+      up (Term.Cse n _ t ts) = Term.Cse n (Just new_var) (up t) (map upA ts)
         where
         upA (Term.Alt c v t) = Term.Alt c v (up t)
       up other = other
@@ -187,10 +189,10 @@ deforest :: ZTerm -> Deforest ZTerm
 deforest (Term.Lam x t) = 
   Term.Lam x <$> deforest t 
   
-deforest top_term@(Term.Cse fxs cse_term alts) = do 
+deforest top_term@(Term.Cse cse_id fxs cse_term alts) = do 
   cse_term' <- deforest cse_term
   alts' <- mapM deforestAlt alts
-  let new_cse = Term.Cse fxs cse_term' alts'
+  let new_cse = Term.Cse cse_id fxs cse_term' alts'
   old_fix <- asks dfFixVar
   if old_fix `elem` Term.IgnoreAnnotations new_cse
   then attemptRewrite new_cse

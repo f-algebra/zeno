@@ -51,12 +51,17 @@ instance TermTraversable Clause where
   mapTerms f (Clause antes consq) = 
     Clause (map (mapTerms f) antes) (mapTerms f consq)
     
+  termList (Clause antes consq) = 
+    concatMap termList (antes ++ [consq])
+    
 instance TermTraversable Equation where
   mapTermsM f (Equal t1 t2) = 
     Equal <$> f t1 <*> f t2
     
   mapTerms f (Equal t1 t2) = 
     Equal (f t1) (f t2)
+    
+  termList (Equal t1 t2) = [t1, t2]
     
 addAntecedent :: Equation a -> Clause a -> Clause a
 addAntecedent eq cs = cs 

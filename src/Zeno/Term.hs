@@ -25,7 +25,8 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { caseOfFix :: !(Maybe a),
+  | Cse     { caseOfName :: Name,
+              caseOfFix :: !(Maybe a),
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
@@ -63,6 +64,14 @@ class TermTraversable t where
 
   mapTerms :: (Term a -> Term a) -> t a -> t a
   mapTerms f = runIdentity . mapTermsM (return . f)   
+  
+  termList :: t a -> [Term a]
+  termList = execWriter . mapTermsM (\t -> tell [t] >> return t)
+  
+instance TermTraversable Term where
+  mapTermsM = ($)
+  mapTerms = ($)
+  termList = pure
 
 isVar :: Term a -> Bool
 isVar (Var {}) = True
@@ -92,7 +101,7 @@ isNormal = Set.null . freeFixes
   freeFixes (App t1 t2) = freeFixes t1 `mappend` freeFixes t2
   freeFixes (Lam _ t) = freeFixes t
   freeFixes (Fix fix t) = Set.delete fix (freeFixes t)
-  freeFixes (Cse fx term alts) 
+  freeFixes (Cse _ fx term alts) 
     | Just fix <- fx = Set.insert fix inner
     | otherwise = inner
     where
@@ -131,7 +140,7 @@ instance Foldable IgnoreAnnotations where
     go (App x y) = go x ++ go y
     go (Lam x t) = f x ++ go t
     go (Fix x t) = f x ++ go t
-    go (Cse _ t as) = go t ++ foldMap (go . altTerm) as
+    go (Cse _ _ t as) = go t ++ foldMap (go . altTerm) as
 
 instance Ord a => Unifiable (Term a) where
   type UniTerm (Term a) = Term a
@@ -158,9 +167,9 @@ instance Ord a => Unifiable (Term a) where
 instance Ord a => WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
-  mapWithinM f (Cse fxs lhs alts) =
-    f =<< return (Cse fxs) `ap` mapWithinM f lhs 
-                           `ap` mapM (mapWithinM f) alts
+  mapWithinM f (Cse id fxs lhs alts) =
+    f =<< return (Cse id fxs) `ap` mapWithinM f lhs 
+                              `ap` mapM (mapWithinM f) alts
   mapWithinM f (Lam var rhs) =
     f =<< return (Lam var) `ap` mapWithinM f rhs
   mapWithinM f (Fix var rhs) =
@@ -179,8 +188,8 @@ instance Ord a => WithinTraversable (Term a) (Term a) where
       where sub' = removeVariable var sub
     subst (App lhs rhs) =
       App (substitute sub lhs) (substitute sub rhs)
-    subst (Cse fxs term alts) = 
-      Cse fxs (substitute sub term) (map (substitute sub) alts)
+    subst (Cse id fxs term alts) = 
+      Cse id fxs (substitute sub term) (map (substitute sub) alts)
     subst other = other
     
 instance Ord a => WithinTraversable (Term a) (Alt a) where
