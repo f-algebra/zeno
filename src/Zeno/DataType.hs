@@ -8,7 +8,7 @@ import Zeno.Name ( Name )
 
 data DataType a
   = DataType    { name :: !Name,
-                  cons :: ![a] }
+                  constructors :: ![a] }
 
 instance Eq (DataType a) where
   (==) = (==) `on` name

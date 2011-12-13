@@ -19,7 +19,7 @@ import Zeno.DataType ( DataType )
 import Zeno.Type ( Type, Typed (..) )
 import Zeno.Name ( Unique, Name, UniqueGen )
 import Zeno.Term ( Term, Alt, TermSubstitution )
-import Zeno.Clause ( Clause, Equation )
+import Zeno.Logic ( Clause, Equation )
 import Zeno.Utils
 import Zeno.Unification
 import Zeno.Traversing

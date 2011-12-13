@@ -7,39 +7,37 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.ReaderWriter
 import Zeno.Var ( ZVar, ZTerm )
+import Zeno.Term ( TermTraversable, mapTermsM )
 import Zeno.Traversing
 import Zeno.Show
 
-import qualified Zeno.Clause as Clause
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
--- Can drop the Reader?
-type Eval = ReaderWriter (Set ZVar) Any
+type Eval = Reader (Set ZVar)
 
-normalise :: ZTerm -> ZTerm
-normalise = fst . flip runReaderWriter mempty . eval
+normalise :: TermTraversable t => t ZVar -> t ZVar
+normalise = flip runReader mempty . mapTermsM eval
 
-addFixedVars :: [ZVar] -> Eval a -> Eval a
-addFixedVars = local . Set.union . Set.fromList
+fixed :: Maybe ZVar -> Eval a -> Eval a
+fixed Nothing = id
+fixed (Just var) = local (Set.insert var)
 
 eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
 eval (Term.Lam x t) = Term.Lam x <$> eval t
 eval (Term.Fix f t) = Term.Fix f <$> return t
 eval (Term.Cse cse_fixed cse_of cse_alts) =
-  addFixedVars cse_fixed $ do
+  fixed cse_fixed $ do
     cse_of' <- eval cse_of
     cse_alts' <- mapM evalAlt cse_alts
     if not (Var.isConstructorTerm cse_of')
-      then 
-        return (Term.Cse cse_fixed cse_of' cse_alts')
-      else do
-        tell (Any True)
-        eval (matchAlt cse_of' cse_alts')
+    then return (Term.Cse cse_fixed cse_of' cse_alts')
+    else eval (matchAlt cse_of' cse_alts')
   where
   evalAlt alt = do
     term' <- eval (Term.altTerm alt)
@@ -59,22 +57,19 @@ eval other = do
   where
   evalApp :: [ZTerm] -> Eval ZTerm
   evalApp (Term.Lam lam_var lam_rhs : arg : rest) = do
-    tell (Any True)
     lam_rhs' <- eval $ replaceWithin (Term.Var lam_var) arg lam_rhs
     evalApp (lam_rhs' : rest)
   evalApp app@(fix_t@(Term.Fix fix_var fix_rhs) : args) = do
     already_unrolled <- ask
     let did_nothing = return (Term.unflattenApp app)
     if fix_var `Set.member` already_unrolled
+    then did_nothing
+    else do
+      unrolled <- eval $ replaceWithin (Term.Var fix_var) fix_t fix_rhs
+      unrolled' <- evalApp (unrolled : args)
+      if not (Term.isNormal unrolled')
       then did_nothing
-      else do
-        unrolled <- eval $ replaceWithin (Term.Var fix_var) fix_t fix_rhs
-        unrolled' <- evalApp (unrolled : args)
-        if not (Term.isNormal unrolled')
-          then did_nothing
-          else do
-            tell (Any True) 
-            eval unrolled'
+      else eval unrolled'
   evalApp app = 
     return (Term.unflattenApp app)
 

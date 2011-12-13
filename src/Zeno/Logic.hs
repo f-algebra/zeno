@@ -44,6 +44,20 @@ instance HasVariables (Clause a) where
     consVars = freeVars (consequent cls)
     antsVars = Set.unions $ map freeVars (antecedents cls)
     
+instance TermTraversable Clause where
+  mapTermsM f (Clause antes consq) = 
+    Clause <$> mapM (mapTermsM f) antes <*> mapTermsM f consq
+    
+  mapTerms f (Clause antes consq) = 
+    Clause (map (mapTerms f) antes) (mapTerms f consq)
+    
+instance TermTraversable Equation where
+  mapTermsM f (Equal t1 t2) = 
+    Equal <$> f t1 <*> f t2
+    
+  mapTerms f (Equal t1 t2) = 
+    Equal (f t1) (f t2)
+    
 addAntecedent :: Equation a -> Clause a -> Clause a
 addAntecedent eq cs = cs 
   { antecedents = antecedents cs ++ [eq] }

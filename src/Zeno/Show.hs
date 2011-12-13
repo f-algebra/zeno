@@ -1,20 +1,21 @@
 module Zeno.Show (
-  showTyped
+  showTyped, showWithDefinitions
 ) where
 
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Utils
+import Zeno.Traversing
 import Zeno.Type ( Type, Typed (..) )
 import Zeno.DataType ( DataType )
 import Zeno.Core ( ZenoTheory )
 import Zeno.Var ( ZVar )
 import Zeno.Term ( Term, Alt )
-import Zeno.Clause ( Equation, Clause )
+import Zeno.Logic ( Equation, Clause )
 
 import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
-import qualified Zeno.Clause as Clause
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Core as Zeno
@@ -36,10 +37,10 @@ instance Show (DataType a) where
   show = show . DataType.name
   
 instance Show a => Show (Equation a) where
-  show (Clause.Equal l r) = show l ++ " = " ++ show r
+  show (Logic.Equal l r) = show l ++ " = " ++ show r
 
 instance Show a => Show (Clause a) where
-  show = intercalate " ->\n  " . map show . Clause.flatten
+  show = intercalate " ->\n  " . map show . Logic.flatten
               
 instance Show ZVar where
   show = show . Var.name 
@@ -105,7 +106,22 @@ instance Show ZenoTheory where
     
     showType dtype =
       "\ntype " ++ show (DataType.name dtype) ++ " where" 
-      ++ concatMap (("\n  " ++) . showTyped) (DataType.cons dtype) ++ "\n"
+      ++ concatMap (("\n  " ++) . showTyped) (DataType.constructors dtype) ++ "\n"
   
 showTyped :: (Show a, Typed a, Show (Type (SimpleType a))) => a -> String
 showTyped x = show x ++ " : " ++ show (typeOf x)
+
+showWithDefinitions :: forall a t .
+  (WithinTraversable (Term a) t, Show a, Show t) => t -> String
+showWithDefinitions has_terms = show has_terms ++ "\nwhere\n" ++ defs
+  where
+  defs = intercalate "\n"                
+       $ map showDef 
+       $ Map.toList
+       $ foldWithin collectDefs has_terms
+  
+  collectDefs :: Term a -> Map String String
+  collectDefs (Term.Fix var def) = Map.singleton (show var) (show def)
+  collectDefs other = mempty
+  
+  showDef (name, def) = name ++ " = " ++ def

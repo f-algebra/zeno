@@ -11,7 +11,7 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Show
 
-import qualified Zeno.Clause as Clause
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Name as Name
@@ -33,7 +33,7 @@ data HappyAbsSyn
 	| HappyAbsSyn19 ((String, RTerm))
 	| HappyAbsSyn20 (RTerm)
 	| HappyAbsSyn21 (RProp)
-	| HappyAbsSyn22 (Clause.Clause RVar)
+	| HappyAbsSyn22 (Logic.Clause RVar)
 	| HappyAbsSyn23 (RClause)
 	| HappyAbsSyn24 (REquation)
 
@@ -823,7 +823,7 @@ happyReduction_33 ((HappyAbsSyn14  happy_var_4) `HappyStk`
 	_ `HappyStk`
 	happyRest)
 	 = HappyAbsSyn20
-		 (Term.Cse mempty happy_var_2 happy_var_4
+		 (Term.Cse Nothing happy_var_2 happy_var_4
 	) `HappyStk` happyRest
 
 happyReduce_34 = happySpecReduce_3  21 happyReduction_34
@@ -840,14 +840,14 @@ happyReduction_35 (HappyAbsSyn24  happy_var_3)
 	_
 	(HappyAbsSyn22  happy_var_1)
 	 =  HappyAbsSyn22
-		 (Clause.Clause (Clause.flatten happy_var_1) happy_var_3
+		 (Logic.Clause (Logic.flatten happy_var_1) happy_var_3
 	)
 happyReduction_35 _ _ _  = notHappyAtAll 
 
 happyReduce_36 = happySpecReduce_1  22 happyReduction_36
 happyReduction_36 (HappyAbsSyn24  happy_var_1)
 	 =  HappyAbsSyn22
-		 (Clause.Clause [] happy_var_1
+		 (Logic.Clause [] happy_var_1
 	)
 happyReduction_36 _  = notHappyAtAll 
 
@@ -873,7 +873,7 @@ happyReduction_39 (HappyAbsSyn20  happy_var_3)
 	_
 	(HappyAbsSyn20  happy_var_1)
 	 =  HappyAbsSyn24
-		 (Clause.Equal happy_var_1 happy_var_3
+		 (Logic.Equal happy_var_1 happy_var_3
 	)
 happyReduction_39 _ _ _  = notHappyAtAll 
 
@@ -945,8 +945,8 @@ happyError tokens = error $ "Parse error\n" ++ (show tokens)
 type RType = Type.Type String
 type RTerm = Term.Term RVar
 type RAlt = Term.Alt RVar
-type RClause = ([RVar], Clause.Clause RVar)
-type REquation = Clause.Equation RVar
+type RClause = ([RVar], Logic.Clause RVar)
+type REquation = Logic.Equation RVar
 type RProp = (String, RClause)
 data RVar
   = RVar      { varName :: String, 

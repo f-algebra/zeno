@@ -11,7 +11,7 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Show
 
-import qualified Zeno.Clause as Clause
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Name as Name
@@ -102,21 +102,21 @@ Term :: { RTerm }
   | '(' Term ')'                      { $2 }
   | 'fun' TypedVars '->' Term         { Term.unflattenLam $2 $4 }
   | 'fix' TypedVar 'in' Term          { Term.Fix $2 $4 }
-  | 'case' Term 'of' Matches          { Term.Cse mempty $2 $4 }
+  | 'case' Term 'of' Matches          { Term.Cse Nothing $2 $4 }
   
 Prop :: { RProp }
   : name '=' Clause                   { ($1, $3) } 
   
-InnerClause :: { Clause.Clause RVar } 
-  : InnerClause '->' Equation         { Clause.Clause (Clause.flatten $1) $3 }
-  | Equation                          { Clause.Clause [] $1 }
+InnerClause :: { Logic.Clause RVar } 
+  : InnerClause '->' Equation         { Logic.Clause (Logic.flatten $1) $3 }
+  | Equation                          { Logic.Clause [] $1 }
   
 Clause :: { RClause }
   : InnerClause                       { ([], $1) }
   | 'all' TypedVars '->' InnerClause  { ($2, $4) }
   
 Equation :: { REquation }
-  : Term '=' Term                     { Clause.Equal $1 $3 }
+  : Term '=' Term                     { Logic.Equal $1 $3 }
   
 {
 happyError :: [Token] -> a
@@ -125,8 +125,8 @@ happyError tokens = error $ "Parse error\n" ++ (show tokens)
 type RType = Type.Type String
 type RTerm = Term.Term RVar
 type RAlt = Term.Alt RVar
-type RClause = ([RVar], Clause.Clause RVar)
-type REquation = Clause.Equation RVar
+type RClause = ([RVar], Logic.Clause RVar)
+type REquation = Logic.Equation RVar
 type RProp = (String, RClause)
 data RVar
   = RVar      { varName :: String, 

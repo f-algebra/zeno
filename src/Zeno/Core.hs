@@ -1,5 +1,6 @@
 module Zeno.Core (
   Zeno, ZenoState (..), ZenoTheory (..),
+  ZProof,
   defineType, defineTerm, defineProp,
   lookupTerm, lookupType,
   print, flush
@@ -36,7 +37,7 @@ data DiscoveredLemma
   = DiscoveredLemma   { discoveredProperty :: !ZClause,
                         discoveredProof :: !ZProof,
                         discoveredReason :: !String }
-
+  
 
 instance UniqueGen ZenoState where
   takeUnique zeno = 

@@ -1,3 +1,5 @@
+{-# LANGUAGE FunctionalDependencies #-}
+
 module Zeno.Traversing (
   WithinTraversable (..), HasVariables (..),
   Substitution, replaceWithin,
@@ -21,7 +23,7 @@ showSubstitution (Map.toList -> subs) =
   "[ " ++ (intercalate "; " . map showSub) subs ++ " ]"
   where showSub (k, v) = show k ++ " -> " ++ show v
 
-class WithinTraversable t f where
+class WithinTraversable t f | f -> t where
   mapWithinM :: Monad m => (t -> m t) -> f -> m f
   
   mapWithin :: (t -> t) -> f -> f

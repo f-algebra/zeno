@@ -2,6 +2,7 @@
 module Zeno.Term (
   Term (..), Alt (..),
   TermSubstitution, IgnoreAnnotations (..),
+  TermTraversable (..),
   isVar, fromVar, isApp, isCse, isLam, isFix,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
   function, isNormal
@@ -24,7 +25,7 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { caseOfFixes :: ![a],
+  | Cse     { caseOfFix :: !(Maybe a),
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
@@ -36,10 +37,6 @@ data Alt a
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 type TermSubstitution a = Substitution (Term a) (Term a)
-
--- | A 'Foldable' instance which does not include annotations
-newtype IgnoreAnnotations a 
-  = IgnoreAnnotations { includeAnnotations :: Term a }
 
 instance HasVariables (Term a) where
   type Var (Term a) = a
@@ -58,6 +55,14 @@ instance HasVariables (Alt a) where
   
   freeVars (Alt _ vars e) = 
     Set.difference (freeVars e) (Set.fromList vars)
+    
+-- | Represents traversing over top-level 'Term's only, 
+-- does not recurse into sub-terms.
+class TermTraversable t where
+  mapTermsM :: (Applicative m, Monad m) => (Term a -> m (Term a)) -> t a -> m (t a)
+
+  mapTerms :: (Term a -> Term a) -> t a -> t a
+  mapTerms f = runIdentity . mapTermsM (return . f)   
 
 isVar :: Term a -> Bool
 isVar (Var {}) = True
@@ -87,7 +92,9 @@ isNormal = Set.null . freeFixes
   freeFixes (App t1 t2) = freeFixes t1 `mappend` freeFixes t2
   freeFixes (Lam _ t) = freeFixes t
   freeFixes (Fix fix t) = Set.delete fix (freeFixes t)
-  freeFixes (Cse fixes term alts) = Set.fromList fixes `Set.union` inner
+  freeFixes (Cse fx term alts) 
+    | Just fix <- fx = Set.insert fix inner
+    | otherwise = inner
     where
     inner = concatMap freeFixes (term : map altTerm alts)
     
@@ -112,6 +119,10 @@ flattenLam expr = ([], expr)
 
 unflattenLam :: [a] -> Term a -> Term a
 unflattenLam = flip (foldr Lam)
+
+-- | A 'Foldable' instance which does not include annotations
+newtype IgnoreAnnotations a 
+  = IgnoreAnnotations { includeAnnotations :: Term a }
 
 instance Foldable IgnoreAnnotations where
   foldMap f = go . includeAnnotations
@@ -138,7 +149,8 @@ instance Ord a => Unifiable (Term a) where
     | x1 == x2 = mempty
   unifier (Var x) expr =
     Unifier (Map.singleton x expr)
-  unifier _ _ = error "need to implement unification for case"  -- NoUnifier
+  unifier _ _ = 
+    error "need to implement unification for case"  -- NoUnifier
   
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)

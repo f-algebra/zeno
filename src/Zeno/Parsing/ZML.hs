@@ -17,14 +17,14 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.DataType as DataType
-import qualified Zeno.Clause as Clause
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Parsing.ZMLRaw as Raw
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-type Parser = ReaderT (Map String ZTerm, Set ZVar) Zeno
+type Parser = ReaderT (Map String ZTerm, Maybe ZVar) Zeno
 
 readLine :: String -> (Maybe (String, String), String)
 readLine str = 
@@ -55,7 +55,7 @@ readTerm :: String -> Zeno ZTerm
 readTerm = runParser . parseRTerm . Raw.parseTerm
 
 readSpec :: String -> Zeno (String, [ZTerm], ZTerm)
-readSpec (Raw.parseClause -> (vars, Clause.Clause [] (Clause.Equal left right)))
+readSpec (Raw.parseClause -> (vars, Logic.Clause [] (Logic.Equal left right)))
   | not (null args) = 
       runParser $ localTypedRVars vars $ do
         args' <- mapM parseRTerm args
@@ -67,7 +67,7 @@ readSpec arg =
   error $ "Invalid specification: " ++ arg
   
 runParser :: Parser a -> Zeno a
-runParser = flip runReaderT (mempty, mempty)
+runParser = flip runReaderT (mempty, Nothing)
 
 parseRTypeDef :: RTypeDef -> Parser ()
 parseRTypeDef (RTypeDef type_name type_cons) = do
@@ -85,14 +85,14 @@ parseRTypeDef (RTypeDef type_name type_cons) = do
     return new_con
     
 parseRClause :: RClause -> Parser ZClause
-parseRClause (rvars, Clause.Clause antes consq) =
+parseRClause (rvars, Logic.Clause antes consq) =
   localTypedRVars rvars
-    $ Clause.Clause <$> mapM parseREquation antes 
+    $ Logic.Clause <$> mapM parseREquation antes 
                     <*> parseREquation consq
 
 parseREquation :: REquation -> Parser ZEquation
-parseREquation (Clause.Equal rleft rright) = 
-  Clause.Equal <$> parseRTerm rleft <*> parseRTerm rright
+parseREquation (Logic.Equal rleft rright) = 
+  Logic.Equal <$> parseRTerm rleft <*> parseRTerm rright
   
 parseRType :: RType -> Parser ZType
 parseRType (Type.Var rtvar) = 
@@ -117,10 +117,10 @@ parseRTerm (Term.Fix typed_var rhs) = do
        $ parseRTerm rhs
   return (Term.Fix new_var zhs)
 parseRTerm (Term.Cse _ rterm ralts) = do
-  fixes <- asks (Set.toList . snd)
+  fix <- asks snd
   zterm <- parseRTerm rterm
   zalts <- mapM parseRAlt ralts
-  return (Term.Cse fixes zterm zalts)
+  return (Term.Cse fix zterm zalts)
   where
   parseRAlt :: RAlt -> Parser ZAlt
   parseRAlt (Term.Alt rcon rargs rterm) = do
@@ -169,5 +169,5 @@ localTerm :: String -> ZTerm -> Parser a -> Parser a
 localTerm name term = local (first (Map.insert name term))
 
 withinFix :: ZVar -> Parser a -> Parser a
-withinFix fix_var = local (second (Set.insert fix_var))
+withinFix = local . second . const . Just
 

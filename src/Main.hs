@@ -46,7 +46,9 @@ command ("simplify", arg) = do
   Zeno.print $
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
-      Just term' -> show term ++ "\nsimplified to\n" ++ show term'
+      Just (term', prove_me) -> 
+        show term ++ "\n\nsimplifies to\n\n" ++ showWithDefinitions term'
+        ++ "\n\nif the following hold\n\n" ++ (intercalate "\n\n" . map show) prove_me
 command ("invent", arg) = do
   (func, args, res) <- ZML.readSpec arg
   mby_def <- runMaybeT (Inventor.run args res)
