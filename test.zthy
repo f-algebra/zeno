@@ -52,4 +52,7 @@ evaluate
   
 simplify 
   fun (xs : list) -> rev2 xs;
+  
+simplify 
+  fun (xs : list) (x : nat) -> rev (app xs (cons x nil));
 

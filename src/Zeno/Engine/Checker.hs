@@ -24,7 +24,7 @@ type ZCounterExample = Substitution ZVar ZTerm
 type Check = State ZenoState
 
 maxDepth :: Int
-maxDepth = 3
+maxDepth = 6
 
 run :: (MonadState ZenoState m, MonadPlus m) => ZClause -> m ZCounterExample
 run cls = do
