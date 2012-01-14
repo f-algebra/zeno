@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 module Zeno.Show (
   showTyped, showWithDefinitions, showSubstitution
 ) where
@@ -9,7 +10,7 @@ import Zeno.Traversing
 import Zeno.Type ( Type, Typed (..) )
 import Zeno.DataType ( DataType )
 import Zeno.Core ( ZenoTheory )
-import Zeno.Var ( ZVar )
+import Zeno.Var ( ZVar, ZTerm, ZAlt )
 import Zeno.Term ( Term, Alt )
 import Zeno.Logic ( Equation, Clause )
 
@@ -36,27 +37,58 @@ instance Show a => Show (Type a) where
 instance Show (DataType a) where
   show = show . DataType.name
   
-instance Show a => Show (Equation a) where
+instance Show (Term a) => Show (Equation a) where
   show (Logic.Equal l r) = show l ++ " = " ++ show r
 
-instance Show a => Show (Clause a) where
+instance Show (Term a) => Show (Clause a) where
   show = intercalate " ->\n  " . map show . Logic.flatten
               
 instance Show ZVar where
   show = show . Var.name 
+  
+type ShowTerm = Reader (Int, (Map String Int, Map ZVar String))
 
-instance Show a => Show (Term a) where
-  show = flip runReader 0 . showTerm
+instance IndentationMonad ShowTerm where
+  indent = local (first (+ 1))
+  resetIndent = local (first (const 0))
+  indentation = asks $ \(i, _) -> fromString $ "\n" ++ (concat . replicate i) "  "
+
+showVar :: ZVar -> ShowTerm String
+showVar var = do
+  var_map <- asks (snd . snd)
+  case Map.lookup var var_map of
+    Nothing -> return (show var)
+    Just name -> return name
+  
+bindVar :: ZVar -> ShowTerm b -> ShowTerm b
+bindVar var = local $ second $ updateMaps
+  where
+  name = show var
+  
+  updateMaps (name_count, var_names) =
+    case Map.lookup name name_count of
+      Nothing -> (Map.insert name 2 name_count, 
+                  Map.insert var name var_names)
+                  
+      Just cn -> (Map.insert name (cn + 1) name_count,
+                  Map.insert var (name ++ show cn) var_names)
+  
+bindVars :: [ZVar] -> ShowTerm b -> ShowTerm b
+bindVars = appEndo . concatMap (Endo . bindVar)
+  
+instance Show ZTerm where
+  show = flip runReader (0, mempty) . showTerm
     where
-    showAlt :: Show a => Alt a -> Indented String
-    showAlt (Term.Alt con binds rhs) = do
+    showAlt :: ZAlt -> ShowTerm String
+    showAlt (Term.Alt con binds rhs) = bindVars binds $ do
       i <- indentation
       rhs_s <- indent $ showTerm rhs
-      let con_s = show con ++ concatMap ((" " ++) . show) binds
+      binds_s <- mapM showVar binds
+      let con_s = show con ++ concatMap (" " ++) binds_s
       return $ i ++ "| " ++ con_s ++ " -> " ++ rhs_s
     
-    showTerm :: Show a => Term a -> Indented String
-    showTerm (Term.Var var) = (return . stripModuleName . show) var
+    showTerm :: ZTerm -> ShowTerm String
+    showTerm (Term.Var var) = showVar var
     showTerm (Term.App lhs rhs) = do
       lhs' <- (indent . showTerm) lhs
       rhs' <- (indent . showTerm) rhs
@@ -68,7 +100,7 @@ instance Show a => Show (Term a) where
     showTerm expr@(Term.Lam {}) = do
       let (vars, rhs) = Term.flattenLam expr
           vars_s = intercalate " " (map show vars)
-      rhs_s <- showTerm rhs
+      rhs_s <- bindVars vars $ showTerm rhs
       return $ "fun " ++ vars_s ++ " -> " ++ rhs_s
     showTerm (Term.Fix f e) = return (show f)
       {- do
@@ -111,8 +143,8 @@ instance Show ZenoTheory where
 showTyped :: (Show a, Typed a, Show (Type (SimpleType a))) => a -> String
 showTyped x = show x ++ " : " ++ show (typeOf x)
 
-showWithDefinitions :: forall a t .
-  (WithinTraversable (Term a) (t a), Show a, Show (t a)) => t a -> String
+showWithDefinitions :: 
+  (WithinTraversable ZTerm (t ZVar), Show (t ZVar)) => t ZVar -> String
 showWithDefinitions has_terms = show has_terms ++ "\nwhere\n" ++ defs
   where
   defs = intercalate "\n"                
@@ -120,7 +152,7 @@ showWithDefinitions has_terms = show has_terms ++ "\nwhere\n" ++ defs
        $ Map.toList
        $ foldWithin collectDefs has_terms
   
-  collectDefs :: Term a -> Map String String
+  collectDefs :: ZTerm -> Map String String
   collectDefs (Term.Fix var def) = Map.singleton (show var) (show def)
   collectDefs other = mempty
   
