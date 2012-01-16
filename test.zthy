@@ -49,13 +49,7 @@ prop add_0 =
   
 prop revfalse = 
   all (xs : list) -> rev xs = xs;
-
-evaluate
-  fun (x : nat) (xs : list) -> rev (cons x (cons x xs));
   
 simplify 
-  fun (xs : list) -> len (rev xs);
-  
-simplify 
-  fun (xs : list) (x : nat) -> rev (app xs (cons x nil));
+  fun (xs : list) (x : nat) -> len (app xs (cons x nil));
 

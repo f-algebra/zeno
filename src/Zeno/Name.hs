@@ -64,5 +64,5 @@ new mby_label = do
   return (Name uni label)
   
 instance Empty Name where
-  empty = Name mempty ""
+  empty = Name mempty "NULL"
 

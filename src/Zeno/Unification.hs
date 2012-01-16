@@ -1,7 +1,7 @@
 module Zeno.Unification (
   Unifiable (..), Unification (..), 
   applyUnification, mergeUnifiers, 
-  allUnifiers, unifyMany
+  allUnifiers, unifyMany, alphaEq
 ) where 
 
 import Prelude ()
@@ -61,6 +61,12 @@ applyUnification (Unifier sub) = substitute sub
 allUnifiers :: (Unifiable a, WithinTraversable a f, Eq a) => 
   a -> f -> [Substitution (UniVar a) (UniTerm a)]
 allUnifiers from = mergeUnifiers . foldWithin (return . unifier from)
+
+alphaEq :: Unifiable a => a -> a -> Bool
+alphaEq x y = 
+  case unifier x y of
+    Unifier sub -> Map.null sub
+    _ -> False
 
 unifyMany :: Unifiable a => [a] -> Maybe a
 unifyMany [] = Nothing

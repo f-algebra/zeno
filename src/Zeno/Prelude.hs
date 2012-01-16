@@ -38,7 +38,7 @@ module Zeno.Prelude
   concatMap, concatMapM, partitionM,
   fromJustT, anyM, allM, findM, sortWith,
   minimalBy, nubOrd, elemOrd, intersectOrd,
-  fromRight, fromLeft, traceMe
+  fromRight, fromLeft, traceMe, setAt
 )
 where
 
@@ -77,7 +77,7 @@ import Data.Foldable hiding ( concat, concatMap )
 import Data.List ( intersperse, unfoldr, partition,
   isPrefixOf, isSuffixOf, isInfixOf, sort, sortBy, findIndex,
   delete, elemIndices, intersect, union,
-  (\\), subsequences, isSuffixOf, deleteBy )
+  (\\), subsequences, isSuffixOf, deleteBy, findIndices )
 import Data.IORef
 import Data.Char ( isAlpha, isDigit, isAlphaNum, isSpace, chr, ord )
 import Data.IntMap ( IntMap )
@@ -171,3 +171,8 @@ fromLeft (Left a) = a
 
 traceMe :: Show a => String -> a -> a
 traceMe s x = trace (s ++ ": " ++ show x) x
+
+setAt :: Int -> a -> [a] -> [a]
+setAt _ x [] = [x]
+setAt 0 x xs = x:(tail xs)
+setAt i x (y:ys) = y:(setAt (i - 1) x ys)

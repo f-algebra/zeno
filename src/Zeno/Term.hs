@@ -39,6 +39,9 @@ data Alt a
   
 type TermSubstitution a = Substitution (Term a) (Term a)
 
+instance Empty a => Empty (Term a) where
+  empty = Var empty
+
 instance HasVariables (Term a) where
   type Var (Term a) = a
   
@@ -150,20 +153,56 @@ instance Ord a => Unifiable (Term a) where
     | v1 == v2 = mempty
   unifier (App f1 a1) (App f2 a2) =
     unifier f1 f2 `mappend` unifier a1 a2
-  unifier (Lam v1 x1) (Lam v2 x2)
-    | v1 == v2 = unifier x1 x2
-  unifier (Fix v1 x1) (Fix v2 x2)
-    | v1 == v2 = unifier x1 x2
-  unifier x1 x2 
+  unifier (Lam v1 x1) (Lam v2 x2) = 
+    unifier x1 (replaceWithin v2 v1 x2)
+  unifier (Fix v1 x1) (Fix v2 x2) =
+    unifier x1 (replaceWithin v2 v1 x2)
+  unifier (Cse _ _ t1 as1) (Cse _ _ t2 as2)
+    | length as1 /= length as2 = NoUnifier
+    | otherwise = unifier t1 t2 `mappend` alts_uni
+    where
+    as1s = sortWith altCon as1
+    as2s = sortWith altCon as2
+    alts_uni = mconcat $ zipWith unifier as1s as2s
+  unifier x1 x2
     | x1 == x2 = mempty
   unifier (Var x) expr =
     Unifier (Map.singleton x expr)
-  unifier _ _ = 
-    error "need to implement unification for case"  -- NoUnifier
+  unifier _ _ =
+    NoUnifier
   
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
+    
+instance Ord a => Unifiable (Alt a) where
+  type UniTerm (Alt a) = Term a
+  type UniVar (Alt a) = a
 
+  unifier (Alt k1 vs1 t1) (Alt k2 vs2 t2)
+    | k1 /= k2 = NoUnifier
+    | otherwise = unifier t1 t2' 
+    where
+    t2' = substitute (Map.fromList $ zip vs2 vs1) t2
+    
+  applyUnifier sub =
+    substitute (Map.mapKeysMonotonic Var sub)
+  
+instance Ord a => WithinTraversable a (Term a) where
+  mapWithinM f = mapWithinM g 
+    where
+    g (Var x) = liftM Var (f x)
+    g t = return t
+    
+  mapWithin f = mapWithin g
+    where
+    g (Var x) = Var (f x)
+    g t = t
+    
+  substitute sub = substitute sub'' 
+    where
+    sub' = Map.mapKeysMonotonic Var sub
+    sub'' = Map.map Var sub'
+    
 instance Ord a => WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs

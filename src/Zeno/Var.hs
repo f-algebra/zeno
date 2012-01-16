@@ -58,6 +58,9 @@ data ZVarSort
   = Universal     { sources :: !(Set CriticalPath) }
   | Constructor
   | Bound
+  
+instance Empty ZVar where
+  empty = Var empty empty Bound
 
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType

@@ -14,6 +14,9 @@ data Type a
   | Var !a
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
+instance Empty a => Empty (Type a) where
+  empty = Var empty
+  
 class Typed a where
   type SimpleType a
   typeOf :: a -> Type (SimpleType a)

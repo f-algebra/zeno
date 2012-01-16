@@ -10,6 +10,9 @@ data DataType a
   = DataType    { name :: !Name,
                   constructors :: ![a] }
 
+instance Empty (DataType a) where
+  empty = DataType empty mempty
+                  
 instance Eq (DataType a) where
   (==) = (==) `on` name
  

@@ -10,6 +10,11 @@
 --    f = g <==> [f x = g x]  (for some new x)
 -- @
 --
+-- Alpha Equality
+-- @
+--    t1 = t2 <==> t1 =_\alpha t2
+-- @
+--
 -- Constructor factoring:
 -- @
 --    K x1 y1 = K x2 y2 <==> [x1 = x2, y1 = y2]
@@ -35,6 +40,7 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Var ( ZEquation, ZClause )
 import Zeno.Evaluation ( normalise )
+import Zeno.Unification ( alphaEq )
 
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -94,6 +100,9 @@ instance Reducible ZEquation where
       $ Logic.Equal (Term.App t1 arg) (Term.App t2 arg)
     where 
     arg = Term.Var x1
+    
+  reduce (Logic.Equal t1 t2)
+    | t1 `alphaEq` t2 = mempty
     
   reduce other = 
     ReducedTo [other]
