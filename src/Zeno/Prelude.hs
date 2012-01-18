@@ -56,7 +56,7 @@ import Control.Monad.State ( evalStateT, execState, runState, evalState,
 import Control.Monad.Reader ( 
   MonadReader (..), Reader (..), ReaderT (..), asks, runReader )
 import Control.Monad.Writer ( execWriter, runWriter, execWriterT,
-  MonadWriter (..), Writer (..), WriterT (..) )
+  MonadWriter (..), Writer (..), WriterT (..), censor, listens )
 import Control.Monad.List ( ListT (..) )
 import Control.Monad.Trans.Maybe
 import Control.Monad.RWS ( RWS (..), RWST (..), execRWS, evalRWS, runRWS )

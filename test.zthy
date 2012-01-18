@@ -50,6 +50,12 @@ prop add_0 =
 prop revfalse = 
   all (xs : list) -> rev xs = xs;
   
+let rec (app1 : list -> nat -> list) =
+  fun (xs : list) (x : nat) -> 
+    case xs of
+    | nil -> cons x nil
+    | cons y ys -> cons y (app1 ys x);
+  
 simplify 
   fun (xs : list) (x : nat) -> len (app xs (cons x nil));
 

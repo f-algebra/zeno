@@ -6,6 +6,7 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Utils ( replace )
 import Zeno.Traversing
+import Zeno.Unification
 import Zeno.Core ( ZenoState )
 import Zeno.Evaluation ( normalise )
 import Zeno.Var ( ZTerm, ZVar, ZAlt, ZEquation, ZClause ) 
@@ -21,38 +22,58 @@ import qualified Zeno.Type as Type
 import qualified Zeno.Engine.Inventor as Inventor
 
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 import qualified Data.Monoid as Monoid
 
 run :: (MonadState ZenoState m, MonadPlus m) => ZTerm -> m (ZTerm, [ZClause])
 run term = do
   state <- get
-  let (term', state', (any, prove_these)) = runRWS (expand term) mempty state
-  if not (getAny any) 
+  let (term', state', (_, prove_these)) = runRWS (simplify term) mempty state
+  if null prove_these
   then mzero
   else do
     put state'
     return (term', prove_these)
 
+freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt
+freshenAltVars (Term.Alt con vars term) = do
+  new_vars <- mapM Var.clone vars
+  let new_term = substitute (Map.fromList (zip vars new_vars)) term
+  return (Term.Alt con new_vars new_term)
+    
 
-type Expand = RWS (Set ZVar) (Any, [ZClause]) ZenoState
+type Simplify = RWS (Set ZVar) (Any, [ZClause]) ZenoState
          
-fixed :: Maybe ZVar -> Expand a -> Expand a
+fixed :: Maybe ZVar -> Simplify a -> Simplify a
 fixed Nothing = id
 fixed (Just var) = local (Set.insert var)
 
-isFixed :: ZVar -> Expand Bool
+isFixed :: ZVar -> Simplify Bool
 isFixed var = asks (Set.member var)
+
+
+simplify :: ZTerm -> Simplify ZTerm
+simplify (Term.Lam x t) = 
+  Term.Lam x <$> simplify t
   
+simplify term@(Term.Fix fix_var fix_term)
+  | Term.isApp fix_body,
+    [indx] <- findIndices containsArg flat_body, False = do 
+    let context val = Term.unflattenApp $ setAt indx val flat_body
+    
+    return undefined
+  where
+  (fix_args, fix_body) = Term.flattenLam fix_term
+  flat_body = Term.flattenApp fix_body
+  args_set = Set.fromList fix_args
+  containsArg = not . Set.null . Set.intersection args_set . Var.freeZVars
   
-expand :: ZTerm -> Expand ZTerm
-expand (Term.Lam x t) = 
-  Term.Lam x <$> expand t
-  
-expand term@(Term.Cse outer_name outer_fx outer_term outer_alts)
+simplify term@(Term.Cse outer_name outer_fx outer_term outer_alts)
   | Term.isCse outer_term = do
-    new_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
-    expand 
-      $ outer_term { Term.caseOfAlts = new_alts,
+    new_inner_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
+    tell (Any True, mempty)
+    simplify 
+      $ outer_term { Term.caseOfAlts = new_inner_alts,
                      Term.caseOfFix = outer_fx }
   where
   inner_fx = Term.caseOfFix outer_term 
@@ -63,49 +84,101 @@ expand term@(Term.Cse outer_name outer_fx outer_term outer_alts)
     let new_term = Term.Cse cse_name inner_fx (Term.altTerm alt) outer_alts
     return $ alt { Term.altTerm = new_term }
 
-expand term@(Term.Cse cse_name cse_fix cse_of cse_alts) = 
-  fixed cse_fix $ do
-    cse_of' <- expand cse_of
-    if Term.isCse cse_of'
-    then expand $ term { Term.caseOfTerm = cse_of' } 
-    else do
-      cse_alts' <- mapM (expandAlt cse_of') cse_alts
-      return $ Term.Cse cse_name cse_fix cse_of' cse_alts'
+simplify cse_term@(Term.Cse {})
+  | Term.isFix fun = 
+    simplify $ cse_term { Term.caseOfTerm = normalised }
   where
-  expandAlt :: ZTerm -> ZAlt -> Expand ZAlt
-  expandAlt cse_of (Term.Alt con vars term) =
-    Term.Alt con vars <$> expand term'
+  (fun:args) = Term.flattenApp (Term.caseOfTerm cse_term)
+  Term.Fix fix_var fix_term = fun
+  unfolded_fix = replaceWithin (Term.Var fix_var) fun fix_term
+  normalised = normalise $ Term.unflattenApp (unfolded_fix : args)
+    
+simplify cse_term@(Term.Cse cse_name cse_fix cse_of cse_alts) = 
+  fixed cse_fix $ do
+    cse_alts' <- mapM (simplifyAlt cse_of) cse_alts
+    let new_term = cse_term { Term.caseOfAlts = cse_alts' }
+    case mapMaybe context cse_alts' of
+      [] -> return new_term
+      cxt:rest -> do
+        let maybe_unified = map (unifyWithContext cxt) cse_alts'
+        if any isNothing maybe_unified
+        then return new_term
+        else do
+          let unified = map fromJust maybe_unified
+          return $ cxt $ new_term { Term.caseOfAlts = unified }
+  where
+  simplifyAlt :: ZTerm -> ZAlt -> Simplify ZAlt
+  simplifyAlt cse_of (Term.Alt con vars term) =
+    Term.Alt con vars <$> simplify term'
     where
     alt_match = Term.unflattenApp . map Term.Var $ (con:vars)
-    term' = normalise $ replaceWithin cse_of alt_match term
+    cse_of_vars = Var.freeZVars cse_of
+    term' = 
+      if any (`Set.member` cse_of_vars) vars
+      then term
+      else normalise $ replaceWithin cse_of alt_match term
+  
+  unifyWithContext :: (ZTerm -> ZTerm) -> ZAlt -> Maybe ZAlt
+  unifyWithContext cxt (Term.Alt con vars term) =
+    case unifier (cxt empty) term of
+      NoUnifier -> Nothing
+      Unifier sub ->
+        case Map.toList sub of
+          [(key, context_gap)] | key == empty ->
+            Just (Term.Alt con vars context_gap)
+          _ -> 
+            Nothing
+    
+  context :: ZAlt -> Maybe (ZTerm -> ZTerm)
+  context (Term.Alt _ vars term)
+    | not (Term.isApp term) = Nothing
+    | otherwise = 
+      case findIndices containsVar flat_term of
+        [indx] -> 
+          Just $ \gap -> Term.unflattenApp $ setAt indx gap flat_term
+        _ -> 
+          Nothing
+    where
+    flat_term = Term.flattenApp term
+    vars_set = Set.fromList vars
+    containsVar = not . Set.null . Set.intersection vars_set . Var.freeZVars 
 
-expand original_term@(Term.App {}) =
-  expandApp (Term.flattenApp original_term)
+simplify term@(Term.App {}) = do
+  flattened <- mapM simplify (Term.flattenApp term)
+  simplifyApp flattened --(Term.flattenApp term)
   where
-  expandApp :: [ZTerm] -> Expand ZTerm
-  expandApp (fun@(Term.Fix fix_var fix_term) : args) 
+  simplifyApp :: [ZTerm] -> Simplify ZTerm
+  simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 
     | Type.isVar (typeOf original_term) = do
       already_unrolled <- isFixed fix_var
       if already_unrolled
       then return original_term
       else do
-        expanded <- expand normalised
-        state <- get
-        new_var <- Var.declare var_name fun_type Var.Bound
-        let new_term = Term.unflattenApp $ map Term.Var (new_var : free_vars)
-            (term', state', proofs) = 
-              runRWS (deforest expanded) (makeDFEnv new_term) state
-        if fix_var `elem` Term.IgnoreAnnotations term'
-        then return expanded
+        (simplified, (cse_float_occurred, _)) <- id
+          $ censor (first (const mempty))
+          $ listen 
+          $ simplify normalised
+        if not $ getAny cse_float_occurred
+        then return original_term
         else do
-          let new_fix_term = updateCaseFixes new_var term'
-              new_fix = Term.Fix new_var (Term.unflattenLam free_vars new_fix_term)
-              new_term = Term.unflattenApp (new_fix : map Term.Var free_vars)
-              prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
-          tell (Any True, proofs ++ [prove_me])
-          put state'
-          return new_term
+          state <- get
+          new_var <- Var.declare var_name fun_type Var.Bound
+          let new_term = Term.unflattenApp $ map Term.Var (new_var : free_vars)
+              (term', state', proofs) =
+                runRWS (deforest simplified) (makeDFEnv new_term) state
+              new_fix_term = updateCaseFixes new_var term'
+          new_fix <- simplify 
+                   $ Term.Fix new_var (Term.unflattenLam free_vars new_fix_term)
+          if new_fix `alphaEq` fun
+          then return original_term
+          else do
+            let new_term = Term.unflattenApp (new_fix : map Term.Var free_vars)
+                prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
+            tell (mempty, proofs ++ [prove_me])
+            put state'
+            return new_term
     where
+    original_term = Term.unflattenApp flattened
     unrolled = replaceWithin (Term.Var fix_var) fun fix_term
     normalised = normalise $ Term.unflattenApp (unrolled : args)
     free_vars_set = Var.freeZVars original_term
@@ -128,10 +201,10 @@ expand original_term@(Term.App {}) =
       up other = other
     
 
-  expandApp app = 
+  simplifyApp app = 
     return (Term.unflattenApp app)
     
-expand other = 
+simplify other = 
   return other
 
   
