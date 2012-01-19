@@ -1,2 +1,5 @@
 single alt case-ofs need to be normalised away
-remember the problem with freshness of alt vars, freshness in general is a problem.
+
+remember the problem with freshness of alt vars, 
+  alt var freshness in general is a problem,
+  but I don't think lambda var freshness is.

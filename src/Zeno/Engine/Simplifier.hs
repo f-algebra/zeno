@@ -55,26 +55,42 @@ isFixed var = asks (Set.member var)
 simplify :: ZTerm -> Simplify ZTerm
 simplify (Term.Lam x t) = 
   Term.Lam x <$> simplify t
-  
+
 simplify term@(Term.Fix fix_var fix_term)
   | Term.isApp fix_body,
-    [indx] <- findIndices containsArg flat_body, False = do 
-    let context val = Term.unflattenApp $ setAt indx val flat_body
-    
-    return undefined
+    [indx] <- findIndices containsArg flat_body = do 
+      let context val = Term.unflattenApp $ setAt indx val flat_body
+          context_gap = flat_body !! indx
+      return (floatContextOut context context_gap)
   where
   (fix_args, fix_body) = Term.flattenLam fix_term
   flat_body = Term.flattenApp fix_body
   args_set = Set.fromList fix_args
   containsArg = not . Set.null . Set.intersection args_set . Var.freeZVars
+  applyFixArgs term = Term.unflattenApp (term : map Term.Var fix_args)
+  
+  floatContextOut :: (ZTerm -> ZTerm) -> ZTerm -> ZTerm
+  floatContextOut context new_term = id
+    $ Term.unflattenLam fix_args
+    $ context
+    $ applyFixArgs
+    $ Term.Fix fix_var
+    $ Term.unflattenLam fix_args
+    $ normalise
+    $ replaceWithin (Term.Var fix_var) cxt_fix_var new_term
+    where
+    cxt_fix_var = id
+      $ Term.unflattenLam fix_args
+      $ context 
+      $ applyFixArgs (Term.Var fix_var)
   
 simplify term@(Term.Cse outer_name outer_fx outer_term outer_alts)
   | Term.isCse outer_term = do
-    new_inner_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
-    tell (Any True, mempty)
-    simplify 
-      $ outer_term { Term.caseOfAlts = new_inner_alts,
-                     Term.caseOfFix = outer_fx }
+      new_inner_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
+      tell (Any True, mempty)
+      simplify 
+        $ outer_term { Term.caseOfAlts = new_inner_alts,
+                       Term.caseOfFix = outer_fx }
   where
   inner_fx = Term.caseOfFix outer_term 
     
@@ -83,32 +99,32 @@ simplify term@(Term.Cse outer_name outer_fx outer_term outer_alts)
     cse_name <- Name.invent
     let new_term = Term.Cse cse_name inner_fx (Term.altTerm alt) outer_alts
     return $ alt { Term.altTerm = new_term }
-
-simplify cse_term@(Term.Cse {})
-  | Term.isFix fun = 
-    simplify $ cse_term { Term.caseOfTerm = normalised }
+    
+simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) = 
+  fixed cse_fix $ do
+    unrolled_fixes <- ask
+    if Term.isFix fun && not (fix_var `elem` unrolled_fixes)
+    then simplify $ cse_term { Term.caseOfTerm = normalised }
+    else do
+      cse_alts' <- mapM simplifyAlt cse_alts
+      let new_term = cse_term { Term.caseOfAlts = cse_alts' }
+      case mapMaybe context cse_alts' of
+        [] -> return new_term
+        cxt:rest -> do
+          let maybe_unified = map (unifyWithContext cxt) cse_alts'
+          if any isNothing maybe_unified
+          then return new_term
+          else do
+            let unified = map fromJust maybe_unified
+            return $ cxt $ new_term { Term.caseOfAlts = unified }
   where
-  (fun:args) = Term.flattenApp (Term.caseOfTerm cse_term)
+  (fun:args) = Term.flattenApp cse_of 
   Term.Fix fix_var fix_term = fun
   unfolded_fix = replaceWithin (Term.Var fix_var) fun fix_term
   normalised = normalise $ Term.unflattenApp (unfolded_fix : args)
-    
-simplify cse_term@(Term.Cse cse_name cse_fix cse_of cse_alts) = 
-  fixed cse_fix $ do
-    cse_alts' <- mapM (simplifyAlt cse_of) cse_alts
-    let new_term = cse_term { Term.caseOfAlts = cse_alts' }
-    case mapMaybe context cse_alts' of
-      [] -> return new_term
-      cxt:rest -> do
-        let maybe_unified = map (unifyWithContext cxt) cse_alts'
-        if any isNothing maybe_unified
-        then return new_term
-        else do
-          let unified = map fromJust maybe_unified
-          return $ cxt $ new_term { Term.caseOfAlts = unified }
-  where
-  simplifyAlt :: ZTerm -> ZAlt -> Simplify ZAlt
-  simplifyAlt cse_of (Term.Alt con vars term) =
+  
+  simplifyAlt :: ZAlt -> Simplify ZAlt
+  simplifyAlt (Term.Alt con vars term) =
     Term.Alt con vars <$> simplify term'
     where
     alt_match = Term.unflattenApp . map Term.Var $ (con:vars)
@@ -169,14 +185,12 @@ simplify term@(Term.App {}) = do
               new_fix_term = updateCaseFixes new_var term'
           new_fix <- simplify 
                    $ Term.Fix new_var (Term.unflattenLam free_vars new_fix_term)
-          if new_fix `alphaEq` fun
-          then return original_term
-          else do
-            let new_term = Term.unflattenApp (new_fix : map Term.Var free_vars)
-                prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
-            tell (mempty, proofs ++ [prove_me])
-            put state'
-            return new_term
+          let new_term = normalise 
+                       $ Term.unflattenApp (new_fix : map Term.Var free_vars)
+              prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
+          tell (mempty, proofs ++ [prove_me])
+          put state'
+          return new_term
     where
     original_term = Term.unflattenApp flattened
     unrolled = replaceWithin (Term.Var fix_var) fun fix_term
