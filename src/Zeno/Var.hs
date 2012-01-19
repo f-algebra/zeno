@@ -11,7 +11,8 @@ module Zeno.Var (
   distinguishFixes, freeZVars,
   new, declare, invent, clone,
   mapUniversal, foldUniversal,
-  instantiateTerm, recursiveArguments
+  instantiateTerm, recursiveArguments,
+  caseSplit
 ) where
 
 import Prelude ()
@@ -25,6 +26,7 @@ import Zeno.Utils
 import Zeno.Unification
 import Zeno.Traversing
 
+import qualified Zeno.DataType as DataType
 import qualified Zeno.Name as Name
 import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
@@ -95,7 +97,7 @@ distinguishFixes = mapWithinM distinguish
   distinguish other = 
     return other
     
-instantiateTerm :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
+instantiateTerm :: (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
 instantiateTerm term
   | Type.isVar (typeOf term) = return term
 instantiateTerm term = do
@@ -103,6 +105,10 @@ instantiateTerm term = do
   instantiateTerm (Term.App term (Term.Var new_arg))
   where
   Type.Fun arg_type _ = typeOf term
+  
+caseSplit :: (MonadState g m, UniqueGen g) => ZDataType -> m [ZTerm]
+caseSplit = 
+  mapM (instantiateTerm . Term.Var) . DataType.constructors
   
 recursiveArguments :: ZTerm -> [ZTerm]
 recursiveArguments term 

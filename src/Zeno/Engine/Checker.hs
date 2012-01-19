@@ -1,5 +1,6 @@
 module Zeno.Engine.Checker (
-  run, ZCounterExample
+  ZCounterExample,
+  run, explore, guessContext
 ) where
 
 import Prelude ()
@@ -41,6 +42,39 @@ firstM _ [] = return Nothing
 firstM f (a:as) = do
   mby_b <- f a
   maybe (firstM f as) (return . Just) mby_b
+      
+explore :: forall m . MonadState ZenoState m => ZTerm -> m [ZTerm]
+explore = expl maxDepth 
+  where
+  expl :: Int -> ZTerm -> m [ZTerm]
+  expl depth term 
+    | depth > 0
+    , Term.isVar strict_term
+    , Type.isVar strict_type = do
+        cons <- Var.caseSplit dtype
+        concatMapM explCon cons
+    where
+    strict_term = Eval.strictTerm term
+    Term.Var strict_var = strict_term 
+    strict_type = typeOf strict_var
+    Type.Var dtype = strict_type
+    
+    explCon :: ZTerm -> m [ZTerm]
+    explCon con_term = id
+      $ expl (depth - 1) 
+      $ Eval.normalise
+      $ replaceWithin strict_term con_term term
+    
+  expl _ term 
+    | Var.isConstructorTerm term = return [term]
+    | otherwise = return []
+    
+
+guessContext :: (MonadPlus m, MonadState ZenoState m) => ZTerm -> m (ZTerm -> ZTerm)
+guessContext term = do
+  potentials <- explore term
+  return undefined
+  
 
 check :: Int -> [ZVar] -> ZClause -> Check (Maybe ZCounterExample)
 check 0 [] _ = return Nothing
@@ -56,12 +90,11 @@ check depth [] cls =
     $ Term.termList cls
   
 check depth (split_var : other_vars) cls = do
-  con_terms <- mapM (Var.instantiateTerm . Term.Var) cons
+  con_terms <- Var.caseSplit 
+             $ Type.fromVar 
+             $ typeOf split_var
   firstM checkCon con_terms
   where
-  var_type = typeOf split_var
-  cons = DataType.constructors (Type.fromVar var_type)
-  
   checkCon :: ZTerm -> Check (Maybe ZCounterExample)
   checkCon con_term =
     case reduced of

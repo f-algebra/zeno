@@ -55,7 +55,7 @@ isFixed var = asks (Set.member var)
 simplify :: ZTerm -> Simplify ZTerm
 simplify (Term.Lam x t) = 
   Term.Lam x <$> simplify t
-
+  
 simplify term@(Term.Fix fix_var fix_term)
   | Term.isApp fix_body,
     [indx] <- findIndices containsArg flat_body = do 
@@ -159,9 +159,10 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
     vars_set = Set.fromList vars
     containsVar = not . Set.null . Set.intersection vars_set . Var.freeZVars 
 
-simplify term@(Term.App {}) = do
-  flattened <- mapM simplify (Term.flattenApp term)
-  simplifyApp flattened --(Term.flattenApp term)
+simplify term@(Term.App {})
+  | Term.isFix $ head (Term.flattenApp term) = do
+      flattened <- mapM simplify (Term.flattenApp term)
+      simplifyApp flattened --(Term.flattenApp term)
   where
   simplifyApp :: [ZTerm] -> Simplify ZTerm
   simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 

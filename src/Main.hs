@@ -12,6 +12,7 @@ import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Inventor as Inventor
 import qualified Zeno.Engine.Checker as Checker
 
+import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML 
 
@@ -40,6 +41,13 @@ command :: (String, String) -> Zeno ()
 command ("type", arg) = ZML.readTypeDef arg
 command ("let", arg) = ZML.readBinding arg
 command ("prop", arg) = ZML.readProp arg
+command ("explore", arg) = do
+  term <- ZML.readTerm arg
+  inst_term <- Var.instantiateTerm term 
+  potentials <- Checker.explore inst_term
+  Zeno.print $ 
+    "Potential values for " ++ show inst_term ++ " are:\n" 
+    ++ intercalate "\n" (map show potentials)
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))

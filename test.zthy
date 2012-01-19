@@ -60,5 +60,5 @@ simplify
   fun (xs : list) (x : nat) -> len (app xs (cons x nil));
   
 simplify 
-  fun (xs : list) -> rev (rev xs);
+  fun (xs : list) (x : nat) -> rev (app xs (cons x nil));
 
