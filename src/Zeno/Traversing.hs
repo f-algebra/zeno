@@ -6,7 +6,7 @@ module Zeno.Traversing (
   withinList, strictlyWithinList,
   contains, containsStrictly,
   removeSupersets, removeSubsets,
-  tryReplace
+  tryReplace, anyWithin
 ) where
 
 import Prelude ()

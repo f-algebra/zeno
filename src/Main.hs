@@ -12,6 +12,7 @@ import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Inventor as Inventor
 import qualified Zeno.Engine.Checker as Checker
 
+import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML 
@@ -43,11 +44,17 @@ command ("let", arg) = ZML.readBinding arg
 command ("prop", arg) = ZML.readProp arg
 command ("explore", arg) = do
   term <- ZML.readTerm arg
-  inst_term <- Var.instantiateTerm term 
-  potentials <- Checker.explore inst_term
+  let raw_term = snd (Term.flattenLam term)
+  potentials <- Checker.explore raw_term
+  mby_context <- runMaybeT $ Checker.guessContext raw_term
+  cxt_filler <- Term.Var <$> Var.declare "..." empty Var.Bound
   Zeno.print $ 
-    "Potential values for " ++ show inst_term ++ " are:\n" 
+    "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
+  case mby_context of
+    Nothing -> return ()
+    Just cxt -> Zeno.print $
+      "Guessed context: " ++ show (cxt cxt_filler)
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))

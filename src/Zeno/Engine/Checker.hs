@@ -49,33 +49,52 @@ explore = expl maxDepth
   expl :: Int -> ZTerm -> m [ZTerm]
   expl depth term 
     | depth > 0
-    , Term.isVar strict_term
-    , Type.isVar strict_type = do
-        cons <- Var.caseSplit dtype
+    , Term.isVar st_term
+    , not (Var.isConstructor st_var)
+    , Type.isVar st_var_type = do
+        cons <- Var.caseSplit st_dtype
         concatMapM explCon cons
     where
-    strict_term = Eval.strictTerm term
-    Term.Var strict_var = strict_term 
-    strict_type = typeOf strict_var
-    Type.Var dtype = strict_type
+    st_term = Eval.strictTerm term
+    st_var = Term.fromVar st_term
+    st_var_type = typeOf st_var
+    st_dtype = Type.fromVar st_var_type
     
     explCon :: ZTerm -> m [ZTerm]
     explCon con_term = id
       $ expl (depth - 1) 
       $ Eval.normalise
-      $ replaceWithin strict_term con_term term
+      $ replaceWithin (Term.Var st_var) con_term term
     
   expl _ term 
     | Var.isConstructorTerm term = return [term]
     | otherwise = return []
-    
 
 guessContext :: (MonadPlus m, MonadState ZenoState m) => ZTerm -> m (ZTerm -> ZTerm)
 guessContext term = do
   potentials <- explore term
-  return undefined
+  case matchContext potentials of
+    Nothing -> mzero
+    Just context -> return context
+  where
+  matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm)
+  matchContext terms = do
+    guard (Var.isConstructorTerm fst_con)
+    guard (all (== fst_con) other_cons)
+    guard (length gap_is == 1)
+    case matchContext gaps of
+      Nothing -> Just context
+      Just inner_context -> Just (context . inner_context)
+    where
+    flattened = map Term.flattenApp terms
+    (fst_con:other_cons) = map head flattened
+    args = map tail flattened
+    paired_args = transpose args
+    gap_is = findIndices (\(a:as) -> any (not . alphaEq a) as) paired_args
+    gap_i = head gap_is
+    gaps = map (!! gap_i) args
+    context fill = Term.unflattenApp $ fst_con:(setAt gap_i fill (head args))
   
-
 check :: Int -> [ZVar] -> ZClause -> Check (Maybe ZCounterExample)
 check 0 [] _ = return Nothing
 check depth [] cls = 
@@ -84,6 +103,7 @@ check depth [] cls =
   new_vars 
     = nubOrd 
     $ filter (Type.isVar . typeOf)
+    $ filter (not . Var.isConstructor)
     $ map Term.fromVar
     $ filter Term.isVar 
     $ map Eval.strictTerm

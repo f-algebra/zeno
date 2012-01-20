@@ -76,7 +76,7 @@ import Data.Traversable
 import Data.Foldable hiding ( concat, concatMap )
 import Data.List ( intersperse, unfoldr, partition,
   isPrefixOf, isSuffixOf, isInfixOf, sort, sortBy, findIndex,
-  delete, elemIndices, intersect, union,
+  delete, elemIndices, intersect, union, transpose,
   (\\), subsequences, isSuffixOf, deleteBy, findIndices )
 import Data.IORef
 import Data.Char ( isAlpha, isDigit, isAlphaNum, isSpace, chr, ord )
