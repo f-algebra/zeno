@@ -20,6 +20,7 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Type as Type
 import qualified Zeno.Engine.Inventor as Inventor
+import qualified Zeno.Engine.Checker as Checker
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -135,15 +136,9 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
       else normalise $ replaceWithin cse_of alt_match term
   
   unifyWithContext :: (ZTerm -> ZTerm) -> ZAlt -> Maybe ZAlt
-  unifyWithContext cxt (Term.Alt con vars term) =
-    case unifier (cxt empty) term of
-      NoUnifier -> Nothing
-      Unifier sub ->
-        case Map.toList sub of
-          [(key, context_gap)] | key == empty ->
-            Just (Term.Alt con vars context_gap)
-          _ -> 
-            Nothing
+  unifyWithContext cxt (Term.Alt con vars term) = do
+    gap <- Var.withinContext term cxt
+    return (Term.Alt con vars gap)
     
   context :: ZAlt -> Maybe (ZTerm -> ZTerm)
   context (Term.Alt _ vars term)
@@ -161,8 +156,18 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
 
 simplify term@(Term.App {})
   | Term.isFix $ head (Term.flattenApp term) = do
-      flattened <- mapM simplify (Term.flattenApp term)
-      simplifyApp flattened --(Term.flattenApp term)
+      flattened <- mapM simplify (Term.flattenApp term) 
+      mby_hnf <- runMaybeT $ do
+        cxt@(context, _) <- Checker.guessContext (Term.unflattenApp flattened)
+        fill <- Inventor.fill cxt term
+        mzero {-
+        return (context fill) -}
+      case mby_hnf of
+        Nothing -> simplifyApp flattened
+        Just hnf_term -> do
+          let prop = Logic.Clause [] (Logic.Equal term hnf_term)
+          tell (mempty, [prop])
+          simplify (traceMe "HNF" hnf_term)
   where
   simplifyApp :: [ZTerm] -> Simplify ZTerm
   simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 
@@ -265,7 +270,7 @@ attemptRewrite term
       if from == term
       then return to
       else do
-        invented_func <- Inventor.run [from] term
+        invented_func <- mzero -- Inventor.run ...
         let guessed_term = Term.App invented_func from
             prove_me = Logic.Equal guessed_term term
         tell $ pure $ Logic.Clause mempty prove_me

@@ -1,6 +1,8 @@
 module Zeno.Logic (
   Equation (..), Clause (..), 
-  addAntecedent, removeAntecedent, flatten
+  addAntecedent, removeAntecedent, 
+  flatten,
+  rewriteL2R
 ) where
 
 import Prelude ()
@@ -9,6 +11,7 @@ import Zeno.Term
 import Zeno.Traversing
 
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 
 data Equation a 
   = Equal       { eqLeft :: !(Term a),
@@ -74,3 +77,5 @@ removeAntecedent eq cs = cs
 flatten :: Clause a -> [Equation a]
 flatten cls = antecedents cls ++ [consequent cls]
 
+rewriteL2R :: Equation a -> Substitution (Term a) (Term a)
+rewriteL2R (Equal left right) = Map.singleton left right

@@ -50,15 +50,13 @@ explore = expl maxDepth
   expl depth term 
     | depth > 0
     , Term.isVar st_term
-    , not (Var.isConstructor st_var)
-    , Type.isVar st_var_type = do
+    , Var.destructible st_var = do
         cons <- Var.caseSplit st_dtype
         concatMapM explCon cons
     where
     st_term = Eval.strictTerm term
     st_var = Term.fromVar st_term
-    st_var_type = typeOf st_var
-    st_dtype = Type.fromVar st_var_type
+    st_dtype = Type.fromVar (typeOf st_var)
     
     explCon :: ZTerm -> m [ZTerm]
     explCon con_term = id
@@ -70,21 +68,22 @@ explore = expl maxDepth
     | Var.isConstructorTerm term = return [term]
     | otherwise = return []
 
-guessContext :: (MonadPlus m, MonadState ZenoState m) => ZTerm -> m (ZTerm -> ZTerm)
+guessContext :: (MonadPlus m, MonadState ZenoState m) => 
+  ZTerm -> m (ZTerm -> ZTerm, ZType)
 guessContext term = do
   potentials <- explore term
   case matchContext potentials of
     Nothing -> mzero
     Just context -> return context
   where
-  matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm)
+  matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm, ZType)
   matchContext terms = do
     guard (Var.isConstructorTerm fst_con)
     guard (all (== fst_con) other_cons)
     guard (length gap_is == 1)
     case matchContext gaps of
-      Nothing -> Just context
-      Just inner_context -> Just (context . inner_context)
+      Nothing -> Just (context, gap_type)
+      Just (inner_context, inner_type) -> Just (context . inner_context, inner_type)
     where
     flattened = map Term.flattenApp terms
     (fst_con:other_cons) = map head flattened
@@ -93,6 +92,7 @@ guessContext term = do
     gap_is = findIndices (\(a:as) -> any (not . alphaEq a) as) paired_args
     gap_i = head gap_is
     gaps = map (!! gap_i) args
+    gap_type = typeOf (head gaps)
     context fill = Term.unflattenApp $ fst_con:(setAt gap_i fill (head args))
   
 check :: Int -> [ZVar] -> ZClause -> Check (Maybe ZCounterExample)

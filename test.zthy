@@ -57,7 +57,5 @@ let rec (app1 : list -> nat -> list) =
     | cons y ys -> cons y (app1 ys x);
   
 simplify 
-  fun (xs : list) (x : nat) -> len (app xs (cons x nil));
+  fun (xs : list) (x : nat) -> rev (app xs (cons x nil));
 
-explore 
-  fun (xs : list) (x : nat) -> rev (app xs (cons x nil)); 

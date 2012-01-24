@@ -39,6 +39,17 @@ strictTerm = strict . normalise
   strict (Term.Cse _ _ term _) = strict term
   strict other = other
 
+criticalTerm :: ZTerm -> Maybe ZTerm
+criticalTerm term = do
+  
+  where
+  critical :: ZTerm -> Writer CriticalPath Term
+  critical term@(Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
+    critical unrolled
+    where
+    unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
+    unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
+  
 {-
 criticalP :: ZTerm -> WriterT CriticalPath Eval ZTerm 
 criticalP term

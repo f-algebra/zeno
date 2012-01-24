@@ -12,7 +12,8 @@ module Zeno.Var (
   new, declare, invent, clone,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
-  caseSplit
+  caseSplit, withinContext,
+  destructible
 ) where
 
 import Prelude ()
@@ -109,6 +110,21 @@ instantiateTerm term = do
 caseSplit :: (MonadState g m, UniqueGen g) => ZDataType -> m [ZTerm]
 caseSplit = 
   mapM (instantiateTerm . Term.Var) . DataType.constructors
+  
+destructible :: ZVar -> Bool
+destructible var = 
+  not (isConstructor var) && Type.isVar (typeOf var)
+  
+withinContext :: ZTerm -> (ZTerm -> ZTerm) -> Maybe ZTerm
+withinContext term context = 
+  case unifier (context empty) term of
+    NoUnifier -> Nothing
+    Unifier sub ->
+      case Map.toList sub of
+        [(key, context_gap)] | key == empty ->
+          Just context_gap
+        _ -> 
+          Nothing
   
 recursiveArguments :: ZTerm -> [ZTerm]
 recursiveArguments term 

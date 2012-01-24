@@ -1,27 +1,101 @@
 module Zeno.Engine.Inventor (
-  run
+  run, fill
 ) where
 
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Traversing
+import Zeno.Unification
 import Zeno.Core ( Zeno, ZenoState )
-import Zeno.Evaluation ( normalise )
-import Zeno.Var ( ZTerm, ZVar, ZAlt )
+import Zeno.Evaluation ( normalise, strictTerm )
+import Zeno.Var ( ZTerm, ZVar, ZAlt, ZType, ZEquation )
+import Zeno.Type ( typeOf )
 import Zeno.Show
  
+import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
-import qualified Data.Set as Set
+import qualified Zeno.Type as Type
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Engine.Checker as Checker
+
+import qualified Data.Set as Set
+import qualified Data.Map as Map
 
 
 run :: (MonadState ZenoState m, MonadPlus m) => 
-  [ZTerm] -> ZTerm -> m ZTerm
-run args result = do
-  mzero
-  where
-  free_vars = concatMap Var.freeZVars (result : args)
+  ZVar -> ZTerm -> ZTerm -> m ZTerm
+run = undefined
   
 
+type Fill = MaybeT (RWS [ZEquation] () ZenoState)
+
+applyRewrites :: ZTerm -> Fill ZTerm
+applyRewrites term = do
+  rewrites <- ask
+  let sub = Map.unions $ map Logic.rewriteL2R rewrites
+  return (substitute sub term)
+  
+splitRewrites :: ZVar -> ZTerm -> Fill a -> Fill a
+splitRewrites var con_term = local (concatMap split)
+  where
+  rec_vars = map Term.fromVar (Var.recursiveArguments con_term)
+  
+  split :: ZEquation -> [ZEquation]
+  split eq
+    | not (var `elem` Var.freeZVars eq) = [eq]
+    | otherwise = map update rec_vars
+    where
+    update rec_var = 
+      normalise $ replaceWithin (Term.Var var) (Term.Var rec_var) eq 
+    
+    
+fill :: (MonadState ZenoState m, MonadPlus m) =>
+  (ZTerm -> ZTerm, ZType) -> ZTerm -> m ZTerm
+fill (context, fill_type) desired_value = do
+  fix_var <- Var.invent fun_type Var.Bound
+  let rewrite_term = Term.unflattenApp (map Term.Var (fix_var : free_vars))
+      rewrite = Logic.Equal desired_value (context rewrite_term)
+  state <- get  
+  let (mby_term, new_state, ()) = 
+        (\rws -> runRWS rws [rewrite] state)  
+        $ runMaybeT 
+        $ inventor desired_value
+  case mby_term of
+    Nothing -> mzero
+    Just filler -> do
+      put new_state
+      return
+        $ Term.Fix fix_var
+        $ Term.unflattenLam free_vars
+        $ filler
+  where
+  free_vars = Set.toList $ Var.freeZVars desired_value
+  arg_types = map typeOf free_vars
+  fun_type = Type.unflatten $ arg_types ++ [fill_type]
+  
+  inventor :: ZTerm -> Fill ZTerm
+  inventor term 
+    | Just gap <- Var.withinContext term context = return gap
+    | not (Term.isVar strict_term) = mzero
+    | not (Var.destructible strict_var) = mzero
+    | otherwise = do
+        cons <- Var.caseSplit $ Type.fromVar $ typeOf strict_var
+        alts <- mapM inventCon cons
+        cse_name <- Name.invent
+        return $ Term.Cse cse_name Nothing strict_term alts
+    where
+    strict_term = strictTerm term
+    Term.Var strict_var = strict_term
+    
+    inventCon :: ZTerm -> Fill ZAlt
+    inventCon con_term = 
+      splitRewrites strict_var con_term $ do
+        rewritten <- applyRewrites reduced_term
+        invented <- inventor rewritten
+        return $ Term.Alt con vars invented
+      where
+      reduced_term = normalise $ replaceWithin strict_term con_term term
+      (con:vars) = map Term.fromVar (Term.flattenApp con_term)
+    

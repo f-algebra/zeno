@@ -47,14 +47,15 @@ command ("explore", arg) = do
   let raw_term = snd (Term.flattenLam term)
   potentials <- Checker.explore raw_term
   mby_context <- runMaybeT $ Checker.guessContext raw_term
-  cxt_filler <- Term.Var <$> Var.declare "..." empty Var.Bound
   Zeno.print $ 
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
   case mby_context of
     Nothing -> return ()
-    Just cxt -> Zeno.print $
-      "Guessed context: " ++ show (cxt cxt_filler)
+    Just (cxt, typ) -> do
+      cxt_filler <- Term.Var <$> Var.declare "" typ Var.Bound
+      Zeno.print $
+        "Guessed context: " ++ show (cxt cxt_filler) ++ "{" ++ show typ ++ "}"
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))
@@ -69,11 +70,11 @@ command ("simplify", arg) = do
         ++ "\n\nif the following hold\n\n" ++ (intercalate "\n\n" . map show) prove_me
 command ("invent", arg) = do
   (func, args, res) <- ZML.readSpec arg
-  mby_def <- runMaybeT (Inventor.run args res)
+  mby_def <- undefined -- (Inventor.run ...)
   Zeno.print $ 
     case mby_def of
       Nothing -> "Couldn't invent a definition for " ++ func
-      Just def -> "Found " ++ func ++ " = " ++ show def
+     -- Just def -> "Found " ++ func ++ " = " ++ show def
 command ("check", arg) = do
   Just prop <- Zeno.lookupProp arg
   mby_cex <- runMaybeT (Checker.run prop)
