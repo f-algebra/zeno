@@ -56,7 +56,7 @@ isFixed var = asks (Set.member var)
 simplify :: ZTerm -> Simplify ZTerm
 simplify (Term.Lam x t) = 
   Term.Lam x <$> simplify t
-  
+  {-
 simplify term@(Term.Fix fix_var fix_term)
   | Term.isApp fix_body,
     [indx] <- findIndices containsArg flat_body = do 
@@ -84,7 +84,7 @@ simplify term@(Term.Fix fix_var fix_term)
       $ Term.unflattenLam fix_args
       $ context 
       $ applyFixArgs (Term.Var fix_var)
-  
+  -}
 simplify term@(Term.Cse outer_name outer_fx outer_term outer_alts)
   | Term.isCse outer_term = do
       new_inner_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
@@ -160,14 +160,13 @@ simplify term@(Term.App {})
       mby_hnf <- runMaybeT $ do
         cxt@(context, _) <- Checker.guessContext (Term.unflattenApp flattened)
         fill <- Inventor.fill cxt term
-        mzero {-
-        return (context fill) -}
+        return (context fill)
       case mby_hnf of
         Nothing -> simplifyApp flattened
         Just hnf_term -> do
           let prop = Logic.Clause [] (Logic.Equal term hnf_term)
           tell (mempty, [prop])
-          simplify (traceMe "HNF" hnf_term)
+          simplify hnf_term
   where
   simplifyApp :: [ZTerm] -> Simplify ZTerm
   simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 

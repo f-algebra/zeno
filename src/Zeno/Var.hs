@@ -13,7 +13,8 @@ module Zeno.Var (
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
   caseSplit, withinContext,
-  destructible
+  destructible,
+  makeUniversal, makeBound
 ) where
 
 import Prelude ()
@@ -81,6 +82,20 @@ isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True
 isUniversal _ = False
 
+makeUniversal :: WithinTraversable ZVar t => [ZVar] -> t -> t
+makeUniversal vars = substitute sub
+  where 
+  uni x = assert (not $ isConstructor x)
+        $ x { sort = Universal mempty }
+  sub = Map.fromList (vars `zip` map uni vars)
+
+makeBound :: WithinTraversable ZVar t => [ZVar] -> t -> t
+makeBound vars = substitute sub
+  where 
+  bnd x = assert (not $ isConstructor x)
+        $ x { sort = Bound}
+  sub = Map.fromList (vars `zip` map bnd vars)
+  
 freeZVars :: (HasVariables a, Var a ~ ZVar) => a -> Set ZVar
 freeZVars = Set.filter (not . isConstructor) . freeVars
 
@@ -111,9 +126,11 @@ caseSplit :: (MonadState g m, UniqueGen g) => ZDataType -> m [ZTerm]
 caseSplit = 
   mapM (instantiateTerm . Term.Var) . DataType.constructors
   
-destructible :: ZVar -> Bool
-destructible var = 
-  not (isConstructor var) && Type.isVar (typeOf var)
+destructible :: ZTerm -> Bool
+destructible term = 
+  Type.isVar (typeOf term) 
+  && not (isConstructorTerm term)
+  && not (Term.isCse term)
   
 withinContext :: ZTerm -> (ZTerm -> ZTerm) -> Maybe ZTerm
 withinContext term context = 

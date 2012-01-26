@@ -26,7 +26,7 @@ instance UniqueGen Unique where
     where uni' = Unique (i + 1)
 
 instance Show Unique where
-  show = intToChars . runUnique
+  show = ('?':) . intToChars . runUnique
     where
     intToChars :: Int -> String
     intToChars 0 = []                          

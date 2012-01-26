@@ -50,7 +50,7 @@ explore = expl maxDepth
   expl depth term 
     | depth > 0
     , Term.isVar st_term
-    , Var.destructible st_var = do
+    , Var.destructible st_term = do
         cons <- Var.caseSplit st_dtype
         concatMapM explCon cons
     where

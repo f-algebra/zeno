@@ -7,7 +7,7 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Core ( Zeno, ZenoState )
-import Zeno.Evaluation ( normalise, strictTerm )
+import Zeno.Evaluation ( normalise, criticalPair )
 import Zeno.Var ( ZTerm, ZVar, ZAlt, ZType, ZEquation )
 import Zeno.Type ( typeOf )
 import Zeno.Show
@@ -35,7 +35,7 @@ applyRewrites :: ZTerm -> Fill ZTerm
 applyRewrites term = do
   rewrites <- ask
   let sub = Map.unions $ map Logic.rewriteL2R rewrites
-  return (substitute sub term)
+  return $ normalise $ substitute sub term
   
 splitRewrites :: ZVar -> ZTerm -> Fill a -> Fill a
 splitRewrites var con_term = local (concatMap split)
@@ -47,8 +47,7 @@ splitRewrites var con_term = local (concatMap split)
     | not (var `elem` Var.freeZVars eq) = [eq]
     | otherwise = map update rec_vars
     where
-    update rec_var = 
-      normalise $ replaceWithin (Term.Var var) (Term.Var rec_var) eq 
+    update rec_var = replaceWithin (Term.Var var) (Term.Var rec_var) eq 
     
     
 fill :: (MonadState ZenoState m, MonadPlus m) =>
@@ -61,7 +60,9 @@ fill (context, fill_type) desired_value = do
   let (mby_term, new_state, ()) = 
         (\rws -> runRWS rws [rewrite] state)  
         $ runMaybeT 
-        $ inventor desired_value
+        $ inventor
+        $ Var.makeUniversal free_vars 
+        $ desired_value
   case mby_term of
     Nothing -> mzero
     Just filler -> do
@@ -69,6 +70,7 @@ fill (context, fill_type) desired_value = do
       return
         $ Term.Fix fix_var
         $ Term.unflattenLam free_vars
+        $ Var.makeBound free_vars
         $ filler
   where
   free_vars = Set.toList $ Var.freeZVars desired_value
@@ -78,24 +80,27 @@ fill (context, fill_type) desired_value = do
   inventor :: ZTerm -> Fill ZTerm
   inventor term 
     | Just gap <- Var.withinContext term context = return gap
-    | not (Term.isVar strict_term) = mzero
-    | not (Var.destructible strict_var) = mzero
+    | isNothing mby_cpair = mzero
+    | not (Term.isVar cterm) = mzero
     | otherwise = do
-        cons <- Var.caseSplit $ Type.fromVar $ typeOf strict_var
+        cons <- Var.caseSplit $ Type.fromVar $ typeOf cvar
         alts <- mapM inventCon cons
         cse_name <- Name.invent
-        return $ Term.Cse cse_name Nothing strict_term alts
+        return $ Term.Cse cse_name Nothing cterm alts
     where
-    strict_term = strictTerm term
-    Term.Var strict_var = strict_term
+    mby_cpair = criticalPair term
+    Just (cterm, cpath) = mby_cpair
+    Term.Var cvar = cterm
     
     inventCon :: ZTerm -> Fill ZAlt
     inventCon con_term = 
-      splitRewrites strict_var con_term $ do
+      splitRewrites cvar con_term $ do
         rewritten <- applyRewrites reduced_term
         invented <- inventor rewritten
         return $ Term.Alt con vars invented
       where
-      reduced_term = normalise $ replaceWithin strict_term con_term term
+      all_sources = Set.insert cpath (Var.allSources cvar)
+      con_term' = Var.addSources all_sources con_term
+      reduced_term = normalise $ replaceWithin cterm con_term' term
       (con:vars) = map Term.fromVar (Term.flattenApp con_term)
     

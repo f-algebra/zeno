@@ -1,15 +1,16 @@
 -- | Beta-reduction
 module Zeno.Evaluation (
-  normalise, strictTerm
+  normalise, strictTerm, criticalPair
 ) where                    
 
 import Prelude ()
 import Zeno.Prelude
 import Zeno.ReaderWriter
-import Zeno.Var ( ZVar, ZTerm, CriticalPath )
+import Zeno.Var ( ZVar, ZTerm, CriticalPath, CriticalPair )
 import Zeno.Term ( TermTraversable, mapTermsM )
 import Zeno.Traversing
 import Zeno.Show
+import Zeno.Utils ( orderedSupersetOf )
 
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Var as Var
@@ -39,16 +40,30 @@ strictTerm = strict . normalise
   strict (Term.Cse _ _ term _) = strict term
   strict other = other
 
-criticalTerm :: ZTerm -> Maybe ZTerm
-criticalTerm term = do
-  
+criticalPair :: ZTerm -> Maybe CriticalPair
+criticalPair term 
+  | valid = Just cpair
+  | otherwise = Nothing
   where
-  critical :: ZTerm -> Writer CriticalPath Term
-  critical term@(Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
+  cpair@(cterm, cpath) = runWriter (critical term)
+  
+  valid = not (null cpath)
+       && Var.destructible cterm
+       && all (not . orderedSupersetOf cpath) (Var.allSources cterm)
+  
+  critical :: ZTerm -> Writer CriticalPath ZTerm
+  critical (Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
     critical unrolled
     where
     unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
     unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
+  critical (Term.Cse cse_name _ cse_term _) = do
+    tell [cse_name]
+    if term `contains` cse_term
+    then critical cse_term
+    else return cse_term
+  critical term = 
+    return term
   
 {-
 criticalP :: ZTerm -> WriterT CriticalPath Eval ZTerm 

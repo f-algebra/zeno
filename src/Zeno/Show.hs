@@ -94,7 +94,7 @@ instance Show ZTerm where
       rhs' <- (indent . showTerm) rhs
       let lhs_s | Term.isVar lhs || Term.isApp lhs || Term.isFix lhs = lhs'
                 | otherwise = "(" ++ lhs' ++ ")"
-          rhs_s | Term.isVar rhs = rhs' 
+          rhs_s | Term.isVar rhs || Term.isFix rhs = rhs' 
                 | otherwise = "(" ++ rhs' ++ ")"
       return $ lhs_s ++ " " ++ rhs_s 
     showTerm expr@(Term.Lam {}) = do
