@@ -25,6 +25,7 @@ import Zeno.Name ( Unique, Name, UniqueGen )
 import Zeno.Term ( Term, Alt, TermSubstitution )
 import Zeno.Logic ( Clause, Equation )
 import Zeno.Utils
+import Zeno.Show
 import Zeno.Unification
 import Zeno.Traversing
 
@@ -69,6 +70,9 @@ instance Empty ZVar where
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType
   typeOf = varType
+  
+instance Show ZVar where
+  show = show . name 
 
 isConstructor :: ZVar -> Bool
 isConstructor (sort -> Constructor {}) = True
@@ -103,9 +107,10 @@ distinguishFixes :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTe
 distinguishFixes = mapWithinM distinguish
   where
   distinguish :: ZTerm -> m ZTerm
-  distinguish cse@(Term.Cse {}) = do
-    new_name <- Name.invent
-    return $ cse { Term.caseOfName = new_name }
+  distinguish cse@(Term.Cse {}) 
+    | Term.isFoldCase (Term.caseOfSort cse) = do
+        new_name <- Name.invent
+        return $ cse { Term.caseOfSort = Term.FoldCase new_name undefined }
   distinguish (Term.Fix var term) = do
     new_var <- clone var
     let new_term = replace var new_var term
@@ -183,8 +188,8 @@ foldUniversal f = foldWithin foldVars
   foldVars _ = mempty
 
 class HasSources a where
-  allSources :: a -> (Set CriticalPath)
-  addSources :: (Set CriticalPath) -> a -> a
+  allSources :: a -> Set CriticalPath
+  addSources :: Set CriticalPath -> a -> a
   clearSources :: a -> a
   
 instance HasSources ZVar where

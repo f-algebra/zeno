@@ -56,7 +56,7 @@ isFixed var = asks (Set.member var)
 simplify :: ZTerm -> Simplify ZTerm
 simplify (Term.Lam x t) = 
   Term.Lam x <$> simplify t
-  {-
+  
 simplify term@(Term.Fix fix_var fix_term)
   | Term.isApp fix_body,
     [indx] <- findIndices containsArg flat_body = do 
@@ -84,7 +84,7 @@ simplify term@(Term.Fix fix_var fix_term)
       $ Term.unflattenLam fix_args
       $ context 
       $ applyFixArgs (Term.Var fix_var)
-  -}
+  
 simplify term@(Term.Cse outer_name outer_fx outer_term outer_alts)
   | Term.isCse outer_term = do
       new_inner_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
@@ -131,6 +131,7 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
     alt_match = Term.unflattenApp . map Term.Var $ (con:vars)
     cse_of_vars = Var.freeZVars cse_of
     term' = 
+      -- Guard against an invalid substitution
       if any (`Set.member` cse_of_vars) vars
       then term
       else normalise $ replaceWithin cse_of alt_match term
@@ -154,19 +155,21 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
     vars_set = Set.fromList vars
     containsVar = not . Set.null . Set.intersection vars_set . Var.freeZVars 
 
-simplify term@(Term.App {})
-  | Term.isFix $ head (Term.flattenApp term) = do
-      flattened <- mapM simplify (Term.flattenApp term) 
-      mby_hnf <- runMaybeT $ do
-        cxt@(context, _) <- Checker.guessContext (Term.unflattenApp flattened)
-        fill <- Inventor.fill cxt term
-        return (context fill)
-      case mby_hnf of
-        Nothing -> simplifyApp flattened
-        Just hnf_term -> do
-          let prop = Logic.Clause [] (Logic.Equal term hnf_term)
-          tell (mempty, [prop])
-          simplify hnf_term
+simplify term@(Term.App {}) = do
+  flattened <- mapM simplify (Term.flattenApp term) 
+  if not $ Term.isFix $ head (Term.flattenApp term)
+  then return $ Term.unflattenApp flattened
+  else do
+    mby_hnf <- runMaybeT $ do
+      cxt@(context, _) <- Checker.guessContext (Term.unflattenApp flattened)
+      fill <- Inventor.fill cxt term
+      return (context fill)
+    case mby_hnf of
+      Nothing -> simplifyApp flattened
+      Just hnf_term -> do
+        let prop = Logic.Clause [] (Logic.Equal term hnf_term)
+        tell (mempty, [prop])
+        return $ trace (show term ++ " !> " ++ showWithDefinitions hnf_term) $ hnf_term
   where
   simplifyApp :: [ZTerm] -> Simplify ZTerm
   simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 
@@ -175,11 +178,11 @@ simplify term@(Term.App {})
       if already_unrolled
       then return original_term
       else do
-        (simplified, (cse_float_occurred, _)) <- id
-          $ censor (first (const mempty))
+        (simplified, (cse_float_occurred, inner_proofs)) <- id
+          $ censor (const mempty)
           $ listen 
           $ simplify normalised
-        if not $ getAny cse_float_occurred
+        if not (getAny cse_float_occurred)
         then return original_term
         else do
           state <- get
@@ -188,14 +191,17 @@ simplify term@(Term.App {})
               (term', state', proofs) =
                 runRWS (deforest simplified) (makeDFEnv new_term) state
               new_fix_term = updateCaseFixes new_var term'
-          new_fix <- simplify 
-                   $ Term.Fix new_var (Term.unflattenLam free_vars new_fix_term)
-          let new_term = normalise 
-                       $ Term.unflattenApp (new_fix : map Term.Var free_vars)
-              prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
-          tell (mempty, proofs ++ [prove_me])
-          put state'
-          return new_term
+          if not (new_var `elem` Var.freeZVars term') 
+          then return original_term
+          else do
+            new_fix <- simplify
+                     $ Term.Fix new_var (Term.unflattenLam free_vars new_fix_term)
+            let new_term = normalise 
+                         $ Term.unflattenApp (new_fix : map Term.Var free_vars)
+                prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
+            tell (mempty, inner_proofs ++ proofs ++ [prove_me])
+            put state'
+            return $ trace (show original_term ++ " => " ++ show new_term) $  new_term 
     where
     original_term = Term.unflattenApp flattened
     unrolled = replaceWithin (Term.Var fix_var) fun fix_term

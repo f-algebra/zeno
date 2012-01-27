@@ -823,7 +823,7 @@ happyReduction_33 ((HappyAbsSyn14  happy_var_4) `HappyStk`
 	_ `HappyStk`
 	happyRest)
 	 = HappyAbsSyn20
-		 (Term.Cse empty Nothing happy_var_2 happy_var_4
+		 (Term.Cse undefined happy_var_2 happy_var_4
 	) `HappyStk` happyRest
 
 happyReduce_34 = happySpecReduce_3  21 happyReduction_34

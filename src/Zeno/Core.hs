@@ -11,9 +11,11 @@ import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType,
                   ZTermSubstitution, ZVar )
 import Zeno.Name ( Unique, UniqueGen (..) )
+import Zeno.Show
 
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
+import qualified Zeno.Term as Term
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 
@@ -92,3 +94,29 @@ flush = do
   modify $ \z -> z { output = mempty }
   return out
 
+instance Show ZenoTheory where
+  show thy = types_s ++ terms_s ++ conjs_s
+    where
+    types_s = concatMap showType 
+      $ Map.elems 
+      $ types thy 
+      
+    terms_s = concatMap showTerm
+      $ filter (not . Term.isVar . snd) 
+      $ Map.toList 
+      $ terms thy 
+      
+    conjs_s = concatMap showProp
+      $ Map.toList
+      $ props thy
+      
+    showProp (name, cls) = 
+      "\nprop " ++ name ++ " = " ++ show cls ++ "\n"
+    
+    showTerm (name, def) = 
+      "\nlet " ++ name ++ " = " ++ show def ++ "\n"
+    
+    showType dtype =
+      "\ntype " ++ show (DataType.name dtype) ++ " where" 
+      ++ concatMap (("\n  " ++) . showTyped) (DataType.constructors dtype) ++ "\n"
+  

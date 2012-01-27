@@ -68,6 +68,7 @@ fill (context, fill_type) desired_value = do
     Just filler -> do
       put new_state
       return
+        $ (\t -> Term.unflattenApp (t : map Term.Var free_vars))  
         $ Term.Fix fix_var
         $ Term.unflattenLam free_vars
         $ Var.makeBound free_vars

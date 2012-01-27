@@ -119,7 +119,7 @@ parseRTerm (Term.Fix typed_var rhs) = do
        $ withinFix new_var
        $ parseRTerm rhs
   return (Term.Fix new_var zhs)
-parseRTerm (Term.Cse _ _ rterm ralts) = do
+parseRTerm (Term.Cse _ rterm ralts) = do
   cse_name <- Name.invent
   fix <- asks snd
   zterm <- parseRTerm rterm

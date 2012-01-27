@@ -1,9 +1,9 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Zeno.Term (
-  Term (..), Alt (..),
+  Term (..), Alt (..), CaseSort (..),
   TermSubstitution, IgnoreAnnotations (..),
   TermTraversable (..),
-  isVar, fromVar, isApp, isCse, isLam, isFix,
+  isVar, fromVar, isApp, isCse, isLam, isFix, isFoldCase,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
   function, isNormal
 ) where
@@ -25,8 +25,7 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { caseOfName :: Name,
-              caseOfFix :: !(Maybe a),
+  | Cse     { caseOfSort :: !(CaseSort a),
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
@@ -35,6 +34,11 @@ data Alt a
   = Alt     { altCon :: !a,
               altVars :: ![a],
               altTerm :: !(Term a) }
+  deriving ( Eq, Ord, Functor, Foldable, Traversable )
+  
+data CaseSort a
+  = FoldCase !Name !a
+  | SimpleCase
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 type TermSubstitution a = Substitution (Term a) (Term a)
@@ -63,7 +67,7 @@ instance HasVariables (Alt a) where
 -- | Represents traversing over top-level 'Term's only, 
 -- does not recurse into sub-terms.
 class TermTraversable t where
-  mapTermsM :: (Applicative m, Monad m) => (Term a -> m (Term a)) -> t a -> m (t a)
+  mapTermsM :: Monad m => (Term a -> m (Term a)) -> t a -> m (t a)
 
   mapTerms :: (Term a -> Term a) -> t a -> t a
   mapTerms f = runIdentity . mapTermsM (return . f)   
@@ -96,6 +100,9 @@ isFix :: Term a -> Bool
 isFix (Fix {}) = True
 isFix _ = False
 
+isFoldCase :: CaseSort a -> Bool
+isFoldCase (FoldCase {}) = True
+
 isNormal :: forall a . Ord a => Term a -> Bool
 isNormal = Set.null . freeFixes
   where
@@ -104,8 +111,8 @@ isNormal = Set.null . freeFixes
   freeFixes (App t1 t2) = freeFixes t1 `mappend` freeFixes t2
   freeFixes (Lam _ t) = freeFixes t
   freeFixes (Fix fix t) = Set.delete fix (freeFixes t)
-  freeFixes (Cse _ fx term alts) 
-    | Just fix <- fx = Set.insert fix inner
+  freeFixes (Cse srt term alts) 
+    | FoldCase _ fix <- srt = Set.insert fix inner
     | otherwise = inner
     where
     inner = concatMap freeFixes (term : map altTerm alts)
@@ -143,7 +150,7 @@ instance Foldable IgnoreAnnotations where
     go (App x y) = go x ++ go y
     go (Lam x t) = f x ++ go t
     go (Fix x t) = f x ++ go t
-    go (Cse _ _ t as) = go t ++ foldMap (go . altTerm) as
+    go (Cse _ t as) = go t ++ foldMap (go . altTerm) as
 
 instance Ord a => Unifiable (Term a) where
   type UniTerm (Term a) = Term a
@@ -157,7 +164,7 @@ instance Ord a => Unifiable (Term a) where
     unifier x1 (replaceWithin v2 v1 x2)
   unifier (Fix v1 x1) (Fix v2 x2) =
     unifier x1 (replaceWithin v2 v1 x2)
-  unifier (Cse _ _ t1 as1) (Cse _ _ t2 as2)
+  unifier (Cse _ t1 as1) (Cse _ t2 as2)
     | length as1 /= length as2 = NoUnifier
     | otherwise = unifier t1 t2 `mappend` alts_uni
     where
@@ -206,8 +213,8 @@ instance Ord a => WithinTraversable a (Term a) where
 instance Ord a => WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =
     f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
-  mapWithinM f (Cse id fxs lhs alts) =
-    f =<< return (Cse id fxs) `ap` mapWithinM f lhs 
+  mapWithinM f (Cse srt lhs alts) =
+    f =<< return (Cse srt) `ap` mapWithinM f lhs 
                               `ap` mapM (mapWithinM f) alts
   mapWithinM f (Lam var rhs) =
     f =<< return (Lam var) `ap` mapWithinM f rhs
@@ -227,8 +234,8 @@ instance Ord a => WithinTraversable (Term a) (Term a) where
       where sub' = removeVariable var sub
     subst (App lhs rhs) =
       App (substitute sub lhs) (substitute sub rhs)
-    subst (Cse id fxs term alts) = 
-      Cse id fxs (substitute sub term) (map (substitute sub) alts)
+    subst (Cse srt term alts) = 
+      Cse srt (substitute sub term) (map (substitute sub) alts)
     subst other = other
     
 instance Ord a => WithinTraversable (Term a) (Alt a) where
@@ -240,18 +247,25 @@ instance Ord a => WithinTraversable (Term a) (Alt a) where
     where
     sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
     
-instance (Eq (SimpleType a), Typed a) => Typed (Term a) where
+instance Empty (CaseSort a) where
+  empty = SimpleCase
+    
+instance (Eq (SimpleType a), Typed a, Show (Type (SimpleType a)), Show (Term a)) 
+    => Typed (Term a) where
   type SimpleType (Term a) = SimpleType a
 
   typeOf (Var x) = typeOf x
   typeOf (Fix f _) = typeOf f
   typeOf cse@(Cse {}) = typeOf . altTerm . head  .caseOfAlts $ cse
   typeOf (Lam x e) = Type.Fun (typeOf x) (typeOf e)
-  typeOf (App e1 e2)
-    | typeOf e2 /= t1a = error "Argument types do not match"
+  typeOf term@(App e1 e2)
+    | t2 /= t1a = error $
+        "Argument types do not match in " ++ show term
+        ++ "\nApplying " ++ show t2 ++ " to " ++ show t1
     | otherwise = t1r
     where
-    Type.Fun t1a t1r = typeOf e1
+    t1@(Type.Fun t1a t1r) = typeOf e1
+    t2 = typeOf e2
     
 removeVariable :: Ord a => a -> TermSubstitution a -> TermSubstitution a
 removeVariable var = Map.filterWithKey $ \k a ->

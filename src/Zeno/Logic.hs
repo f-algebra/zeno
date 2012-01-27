@@ -22,18 +22,6 @@ data Clause a
   = Clause      { antecedents :: ![Equation a],
                   consequent :: !(Equation a) }
   deriving ( Eq, Foldable )
-            
-instance Ord a => WithinTraversable (Term a) (Equation a) where
-  mapWithinM f (Equal t1 t2) = do
-    t1' <- mapWithinM f t1
-    t2' <- mapWithinM f t2
-    return (Equal t1' t2')
-  
-instance Ord a => WithinTraversable (Term a) (Clause a) where
-  mapWithinM f (Clause conds eq) = do
-    eq' <- mapWithinM f eq
-    conds' <- mapM (mapWithinM f) conds
-    return (Clause conds' eq')
     
 instance HasVariables (Equation a) where
   type Var (Equation a) = a
@@ -49,7 +37,7 @@ instance HasVariables (Clause a) where
     
 instance TermTraversable Clause where
   mapTermsM f (Clause antes consq) = 
-    Clause <$> mapM (mapTermsM f) antes <*> mapTermsM f consq
+    Clause `liftM` mapM (mapTermsM f) antes `ap` mapTermsM f consq
     
   mapTerms f (Clause antes consq) = 
     Clause (map (mapTerms f) antes) (mapTerms f consq)
@@ -59,13 +47,25 @@ instance TermTraversable Clause where
     
 instance TermTraversable Equation where
   mapTermsM f (Equal t1 t2) = 
-    Equal <$> f t1 <*> f t2
+    Equal `liftM` f t1 `ap` f t2
     
   mapTerms f (Equal t1 t2) = 
     Equal (f t1) (f t2)
     
   termList (Equal t1 t2) = [t1, t2]
-    
+  
+instance Ord a => WithinTraversable (Term a) (Clause a) where
+  mapWithinM f = mapTermsM (mapWithinM f)
+  mapWithin f = mapTerms (mapWithin f)
+  foldWithin f = concatMap f . termList
+  substitute s = mapTerms (substitute s)
+  
+instance Ord a => WithinTraversable (Term a) (Equation a) where
+  mapWithinM f = mapTermsM (mapWithinM f)
+  mapWithin f = mapTerms (mapWithin f)
+  foldWithin f = concatMap f . termList
+  substitute s = mapTerms (substitute s)  
+  
 addAntecedent :: Equation a -> Clause a -> Clause a
 addAntecedent eq cs = cs 
   { antecedents = antecedents cs ++ [eq] }
