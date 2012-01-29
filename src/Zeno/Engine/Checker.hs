@@ -1,5 +1,5 @@
 module Zeno.Engine.Checker (
-  ZCounterExample,
+  ZCounterExample, Context (..),
   run, explore, guessContext
 ) where
 
@@ -30,7 +30,8 @@ maxDepth = 6
 run :: (MonadState ZenoState m, MonadPlus m) => ZClause -> m ZCounterExample
 run cls = do
   state <- get
-  let (mby_cex, state') = runState (check maxDepth [] cls) state
+  cls' <- Term.reannotate cls
+  let (mby_cex, state') = runState (check maxDepth [] cls') state
   case mby_cex of
     Nothing -> mzero
     Just cex -> do
@@ -44,7 +45,7 @@ firstM f (a:as) = do
   maybe (firstM f as) (return . Just) mby_b
       
 explore :: forall m . MonadState ZenoState m => ZTerm -> m [ZTerm]
-explore = expl maxDepth 
+explore = expl maxDepth <=< Term.reannotate
   where
   expl :: Int -> ZTerm -> m [ZTerm]
   expl depth term 
@@ -59,31 +60,46 @@ explore = expl maxDepth
     st_dtype = Type.fromVar (typeOf st_var)
     
     explCon :: ZTerm -> m [ZTerm]
-    explCon con_term = id
-      $ expl (depth - 1) 
-      $ Eval.normalise
-      $ replaceWithin (Term.Var st_var) con_term term
+    explCon con_term = do
+      explored <- expl (depth - 1) 
+                $ Eval.normalise
+                $ replaceWithin (Term.Var st_var) con_term term
+      return 
+        $ map (replaceWithin con_term (Term.Var st_var)) 
+        $ explored
     
   expl _ term 
     | Var.isConstructorTerm term = return [term]
     | otherwise = return []
 
+data Context
+  = Context   { contextFunction :: ZTerm -> ZTerm,
+                contextArgType :: ZType }
+  | Constant  { constantTerm :: ZTerm }
+    
 guessContext :: (MonadPlus m, MonadState ZenoState m) => 
-  ZTerm -> m (ZTerm -> ZTerm, ZType)
+  ZTerm -> m Context
 guessContext term = do
   potentials <- explore term
-  case matchContext potentials of
-    Nothing -> mzero
-    Just context -> return context
+  if length potentials < maxDepth 
+  then mzero
+  else
+    case matchContext potentials of
+      Nothing -> mzero
+      Just context -> return context
   where
-  matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm, ZType)
+  matchContext :: [ZTerm] -> Maybe Context
+  matchContext [] = 
+  matchContext (fst:rest)
+    | Term.isVar fst
+    , all (== fst) rest = Just (const fst, empty)
   matchContext terms = do
     guard (Var.isConstructorTerm fst_con)
     guard (all (== fst_con) other_cons)
-    guard (length gap_is == 1)
-    case matchContext gaps of
-      Nothing -> Just (context, gap_type)
-      Just (inner_context, inner_type) -> Just (context . inner_context, inner_type)
+    guard (length gap_is <= 1)
+    return $ case matchContext gaps of
+      Nothing -> (context, gap_type)
+      Just (inner_context, inner_type) -> (context . inner_context, inner_type)
     where
     flattened = map Term.flattenApp terms
     (fst_con:other_cons) = map head flattened

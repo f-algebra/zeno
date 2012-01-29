@@ -69,44 +69,47 @@ bindVar var = local $ second $ updateMaps
 bindVars :: (Ord a, Show a) => [a] -> ShowTerm a b -> ShowTerm a b
 bindVars = appEndo . concatMap (Endo . bindVar)
   
+showAlt :: (Ord a, Show a) => Alt a -> ShowTerm a String
+showAlt (Term.Alt con binds rhs) = bindVars binds $ do
+  i <- indentation
+  rhs_s <- indent $ showTerm rhs
+  binds_s <- mapM showVar binds
+  let con_s = show con ++ concatMap (" " ++) binds_s
+  return $ i ++ "| " ++ con_s ++ " -> " ++ rhs_s
+  
+showTerm :: (Ord a, Show a) => Term a -> ShowTerm a String
+showTerm (Term.Var var) = showVar var
+showTerm (Term.App lhs rhs) = do
+  lhs' <- (indent . showTerm) lhs
+  rhs' <- (indent . showTerm) rhs
+  let lhs_s | Term.isVar lhs || Term.isApp lhs || Term.isFix lhs = lhs'
+            | otherwise = "(" ++ lhs' ++ ")"
+      rhs_s | Term.isVar rhs || Term.isFix rhs = rhs' 
+            | otherwise = "(" ++ rhs' ++ ")"
+  return $ lhs_s ++ " " ++ rhs_s 
+showTerm expr@(Term.Lam {}) = do
+  let (vars, rhs) = Term.flattenLam expr
+      vars_s = intercalate " " (map show vars)
+  rhs_s <- bindVars vars $ showTerm rhs
+  return $ "fun " ++ vars_s ++ " -> " ++ rhs_s
+showTerm (Term.Fix f e) =  return (show f) {-
+  do
+    e' <- showTerm e
+    return $ "(fix " ++ show f ++ " in " ++ e' ++ ")" -}
+showTerm (Term.Cse _ lhs alts) = indent $ do
+  i <- indentation
+  alts' <- concatMapM showAlt $ alts
+  lhs' <- indent . showTerm $ lhs
+  let lhs'' | Term.isVar lhs = lhs'
+            | otherwise = "(" ++ lhs' ++ ")"
+  return $ i ++ "case " ++ lhs'' ++ " of" ++ alts'
+  
+instance (Ord a, Show a) => Show (Alt a) where
+  show = flip runReader (0, mempty) . showAlt
+
 instance (Ord a, Show a) => Show (Term a) where
   show = flip runReader (0, mempty) . showTerm
-    where
-    showAlt :: Alt a -> ShowTerm a String
-    showAlt (Term.Alt con binds rhs) = bindVars binds $ do
-      i <- indentation
-      rhs_s <- indent $ showTerm rhs
-      binds_s <- mapM showVar binds
-      let con_s = show con ++ concatMap (" " ++) binds_s
-      return $ i ++ "| " ++ con_s ++ " -> " ++ rhs_s
     
-    showTerm :: Term a -> ShowTerm a String
-    showTerm (Term.Var var) = showVar var
-    showTerm (Term.App lhs rhs) = do
-      lhs' <- (indent . showTerm) lhs
-      rhs' <- (indent . showTerm) rhs
-      let lhs_s | Term.isVar lhs || Term.isApp lhs || Term.isFix lhs = lhs'
-                | otherwise = "(" ++ lhs' ++ ")"
-          rhs_s | Term.isVar rhs || Term.isFix rhs = rhs' 
-                | otherwise = "(" ++ rhs' ++ ")"
-      return $ lhs_s ++ " " ++ rhs_s 
-    showTerm expr@(Term.Lam {}) = do
-      let (vars, rhs) = Term.flattenLam expr
-          vars_s = intercalate " " (map show vars)
-      rhs_s <- bindVars vars $ showTerm rhs
-      return $ "fun " ++ vars_s ++ " -> " ++ rhs_s
-    showTerm (Term.Fix f e) =  return (show f) {-
-      do
-        e' <- showTerm e
-        return $ "(fix " ++ show f ++ " in " ++ e' ++ ")" -}
-    showTerm (Term.Cse _ lhs alts) = indent $ do
-      i <- indentation
-      alts' <- concatMapM showAlt $ alts
-      lhs' <- indent . showTerm $ lhs
-      let lhs'' | Term.isVar lhs = lhs'
-                | otherwise = "(" ++ lhs' ++ ")"
-      return $ i ++ "case " ++ lhs'' ++ " of" ++ alts'
-  
 showTyped :: (Show a, Typed a, Show (Type (SimpleType a))) => a -> String
 showTyped x = show x ++ " : " ++ show (typeOf x)
 

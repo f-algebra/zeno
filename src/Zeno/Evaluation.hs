@@ -7,7 +7,7 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.ReaderWriter
 import Zeno.Var ( ZVar, ZTerm, CriticalPath, CriticalPair )
-import Zeno.Term ( TermTraversable, mapTermsM )
+import Zeno.Term ( TermTraversable, mapTerms )
 import Zeno.Traversing
 import Zeno.Show
 import Zeno.Utils ( orderedSupersetOf )
@@ -26,7 +26,7 @@ fixed Nothing = id
 fixed (Just var) = local (Set.insert var)
 
 normalise :: TermTraversable t => t ZVar -> t ZVar
-normalise = flip runReader mempty . mapTermsM eval
+normalise = mapTerms (flip runReader mempty . eval)
 
 strictTerm :: ZTerm -> ZTerm
 strictTerm = strict . normalise
@@ -37,7 +37,7 @@ strictTerm = strict . normalise
     where
     unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
     unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
-  strict (Term.Cse _ _ term _) = strict term
+  strict (Term.Cse _ term _) = strict term
   strict other = other
 
 criticalPair :: ZTerm -> Maybe CriticalPair
@@ -57,11 +57,11 @@ criticalPair term
     where
     unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
     unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
-  critical (Term.Cse cse_name _ cse_term _) = do
-    tell [cse_name]
-    if term `contains` cse_term
-    then critical cse_term
-    else return cse_term
+  critical (Term.Cse Term.SimpleCase cse_term _) =
+    return cse_term
+  critical (Term.Cse (Term.FoldCase name _) cse_term _) = do
+    tell [name]
+    critical cse_term
   critical term = 
     return term
   
@@ -85,12 +85,12 @@ eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
 eval (Term.Lam x t) = Term.Lam x <$> eval t
 eval (Term.Fix f t) = Term.Fix f <$> return t
-eval (Term.Cse cse_name cse_fixed cse_of cse_alts) =
-  fixed cse_fixed $ do
+eval (Term.Cse cse_srt cse_of cse_alts) =
+  fixed (Term.caseSortFix cse_srt) $ do
     cse_of' <- eval cse_of
     cse_alts' <- mapM evalAlt cse_alts
     if not (Var.isConstructorTerm cse_of')
-    then return (Term.Cse cse_name cse_fixed cse_of' cse_alts')
+    then return (Term.Cse cse_srt cse_of' cse_alts')
     else eval (matchAlt cse_of' cse_alts')
   where
   evalAlt alt = do
@@ -101,7 +101,9 @@ eval (Term.Cse cse_name cse_fixed cse_of cse_alts) =
     substitute sub . Term.altTerm $ match
     where
     (Term.Var con : term_args) = Term.flattenApp term
-    Just match = find ((== con) . Term.altCon) alts
+    Just match = case find ((== con) . Term.altCon) alts of
+      Nothing -> error $ "Failed match: " ++ show term ++ " with " ++ show alts
+      Just match -> Just match
     bound_vars = map Term.Var . Term.altVars $ match
     sub = Map.fromList $ bound_vars `zip` term_args 
 

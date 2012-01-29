@@ -24,7 +24,7 @@ import qualified Zeno.Parsing.ZMLRaw as Raw
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-type Parser = ReaderT (Map String ZTerm, Maybe ZVar) Zeno
+type Parser = ReaderT (Map String ZTerm) Zeno
 
 readLine :: String -> (Maybe (String, String), String)
 readLine str = 
@@ -70,7 +70,7 @@ readSpec arg =
   error $ "Invalid specification: " ++ arg
   
 runParser :: Parser a -> Zeno a
-runParser = flip runReaderT (mempty, Nothing)
+runParser = flip runReaderT mempty
 
 parseRTypeDef :: RTypeDef -> Parser ()
 parseRTypeDef (RTypeDef type_name type_cons) = do
@@ -91,7 +91,7 @@ parseRClause :: RClause -> Parser ZClause
 parseRClause (rvars, Logic.Clause antes consq) =
   localTypedRVars rvars
     $ Logic.Clause <$> mapM parseREquation antes 
-                    <*> parseREquation consq
+                   <*> parseREquation consq
 
 parseREquation :: REquation -> Parser ZEquation
 parseREquation (Logic.Equal rleft rright) = 
@@ -104,39 +104,41 @@ parseRType (Type.Fun arg res) =
   Type.Fun <$> parseRType arg <*> parseRType res
   
 parseRTerm :: RTerm -> Parser ZTerm
-parseRTerm (Term.Var var) = 
-  lookupTerm (varName var)
-parseRTerm (Term.App t1 t2) = 
-  Term.App <$> parseRTerm t1 <*> parseRTerm t2
-parseRTerm (Term.Lam typed_var rhs) = do
-  new_var <- parseTypedRVar typed_var
-  zhs <- localTerm (Raw.varName typed_var) (Term.Var new_var) 
-       $ parseRTerm rhs
-  return (Term.Lam new_var zhs)
-parseRTerm (Term.Fix typed_var rhs) = do
-  new_var <- parseTypedRVar typed_var
-  zhs <- localTerm (Raw.varName typed_var) (Term.Var new_var) 
-       $ withinFix new_var
-       $ parseRTerm rhs
-  return (Term.Fix new_var zhs)
-parseRTerm (Term.Cse _ rterm ralts) = do
-  cse_name <- Name.invent
-  fix <- asks snd
-  zterm <- parseRTerm rterm
-  zalts <- mapM parseRAlt ralts
-  return (Term.Cse cse_name fix zterm zalts)
+parseRTerm = parse >=> Term.reannotate
   where
-  parseRAlt :: RAlt -> Parser ZAlt
-  parseRAlt (Term.Alt rcon rargs rterm) = do
-    Just (Term.Var con_var) <- Zeno.lookupTerm (Raw.varName rcon)
-    let arg_types = (butlast . Type.flatten . Type.typeOf) con_var
-        arg_names = map varName rargs
-    arg_vars <- zipWithM boundVar arg_names arg_types
-    let named_vars = arg_names `zip` arg_vars
-    zterm <- localVars named_vars (parseRTerm rterm) 
-    return (Term.Alt con_var arg_vars zterm)
+  parse :: RTerm -> Parser ZTerm
+  parse (Term.Var var) = 
+    lookupTerm (varName var)
+  parse (Term.App t1 t2) = 
+    Term.App <$> parse t1 <*> parse t2
+  parse (Term.Lam typed_var rhs) = do
+    new_var <- parseTypedRVar typed_var
+    zhs <- localTerm (Raw.varName typed_var) (Term.Var new_var) 
+         $ parse rhs
+    return (Term.Lam new_var zhs)
+  parse (Term.Fix typed_var rhs) = do
+    new_var <- parseTypedRVar typed_var
+    zhs <- localTerm (Raw.varName typed_var) (Term.Var new_var)
+         $ parse rhs
+    return (Term.Fix new_var zhs)
+  parse (Term.Cse _ rterm ralts) = do
+    zterm <- parse rterm
+    zalts <- mapM parseAlt ralts
+    return (Term.Cse sort_err zterm zalts)
     where
-    boundVar name typ = Var.declare name typ Var.Bound
+    sort_err = error "Parsed case-split with undefined sort"
+    
+    parseAlt :: RAlt -> Parser ZAlt
+    parseAlt (Term.Alt rcon rargs rterm) = do
+      Just (Term.Var con_var) <- Zeno.lookupTerm (Raw.varName rcon)
+      let arg_types = (butlast . Type.flatten . Type.typeOf) con_var
+          arg_names = map varName rargs
+      arg_vars <- zipWithM boundVar arg_names arg_types
+      let named_vars = arg_names `zip` arg_vars
+      zterm <- localVars named_vars (parse rterm) 
+      return (Term.Alt con_var arg_vars zterm)
+      where
+      boundVar name typ = Var.declare name typ Var.Bound
 
 parseTypedRVar :: RVar -> Parser ZVar
 parseTypedRVar (RVar name (Just rtype)) = do
@@ -160,7 +162,7 @@ lookupType name = do
     
 lookupTerm :: String -> Parser ZTerm
 lookupTerm name = do
-  mby_local <- asks (Map.lookup name . fst)
+  mby_local <- asks (Map.lookup name)
   case mby_local of
     Just def -> return def
     Nothing -> do
@@ -170,8 +172,5 @@ lookupTerm name = do
         Nothing -> error $ "Variable not found: " ++ name
         
 localTerm :: String -> ZTerm -> Parser a -> Parser a
-localTerm name term = local (first (Map.insert name term))
-
-withinFix :: ZVar -> Parser a -> Parser a
-withinFix = local . second . const . Just
+localTerm name term = local (Map.insert name term)
 

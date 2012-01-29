@@ -108,9 +108,9 @@ distinguishFixes = mapWithinM distinguish
   where
   distinguish :: ZTerm -> m ZTerm
   distinguish cse@(Term.Cse {}) 
-    | Term.isFoldCase (Term.caseOfSort cse) = do
+    | Term.FoldCase _ fix <- Term.caseOfSort cse = do
         new_name <- Name.invent
-        return $ cse { Term.caseOfSort = Term.FoldCase new_name undefined }
+        return $ cse { Term.caseOfSort = Term.FoldCase new_name fix }
   distinguish (Term.Fix var term) = do
     new_var <- clone var
     let new_term = replace var new_var term

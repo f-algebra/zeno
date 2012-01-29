@@ -67,7 +67,7 @@ fill (context, fill_type) desired_value = do
     Nothing -> mzero
     Just filler -> do
       put new_state
-      return
+      Term.reannotate
         $ (\t -> Term.unflattenApp (t : map Term.Var free_vars))  
         $ Term.Fix fix_var
         $ Term.unflattenLam free_vars
@@ -87,8 +87,10 @@ fill (context, fill_type) desired_value = do
         cons <- Var.caseSplit $ Type.fromVar $ typeOf cvar
         alts <- mapM inventCon cons
         cse_name <- Name.invent
-        return $ Term.Cse cse_name Nothing cterm alts
+        return $ Term.Cse sort_err cterm alts
     where
+    sort_err = error "Invented case-split with undefined sort"
+    
     mby_cpair = criticalPair term
     Just (cterm, cpath) = mby_cpair
     Term.Var cvar = cterm

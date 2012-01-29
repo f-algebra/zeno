@@ -49,7 +49,7 @@ import Prelude hiding ( mapM, foldl, foldl1, mapM_, minimum, maximum, sequence_,
 import Control.Arrow ( (>>>), (<<<), (&&&), (***), first, second )
 import Control.Applicative hiding ( empty )
 import Control.Monad ( liftM, ap, replicateM, 
-  zipWithM, filterM, when, unless, guard, (>=>), MonadPlus (..) )
+  zipWithM, filterM, when, unless, guard, (>=>), (<=<), MonadPlus (..) )
 import Control.Monad.Trans ( MonadTrans (..), lift, liftIO )
 import Control.Monad.State ( evalStateT, execState, runState, evalState,
   MonadState (..), State (..), StateT (..), modify, gets )

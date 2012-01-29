@@ -55,7 +55,7 @@ let rec (app1 : list -> nat -> list) =
     case xs of
     | nil -> cons x nil
     | cons y ys -> cons y (app1 ys x);
-  
+    
 simplify 
-  fun (xs : list) (x : nat) -> len (rev xs);
+  fun (xs : list) (x : nat) -> (rev (rev xs));
 

@@ -5,18 +5,20 @@ module Zeno.Term (
   TermTraversable (..),
   isVar, fromVar, isApp, isCse, isLam, isFix, isFoldCase,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
-  function, isNormal
+  function, isNormal, 
+  caseSortFix, reannotate, freshenCaseSort
 ) where
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Name ( Name )
+import Zeno.Name ( Name, UniqueGen )
 import Zeno.Traversing
 import Zeno.Utils
 import Zeno.Type ( Type, Typed (..) )
 import Zeno.Unification
 
 import qualified Zeno.Type as Type
+import qualified Zeno.Name as Name
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -25,7 +27,7 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { caseOfSort :: !(CaseSort a),
+  | Cse     { caseOfSort :: CaseSort a,
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
@@ -103,6 +105,17 @@ isFix _ = False
 isFoldCase :: CaseSort a -> Bool
 isFoldCase (FoldCase {}) = True
 
+caseSortFix :: CaseSort a -> Maybe a
+caseSortFix (FoldCase _ fix) = Just fix
+caseSortFix _ = Nothing
+
+freshenCaseSort :: 
+    (MonadState g m, UniqueGen g) => CaseSort a -> m (CaseSort a)
+freshenCaseSort SimpleCase = return SimpleCase
+freshenCaseSort (FoldCase name fix) = do
+  new_name <- Name.clone name
+  return (FoldCase new_name fix)
+
 isNormal :: forall a . Ord a => Term a -> Bool
 isNormal = Set.null . freeFixes
   where
@@ -138,6 +151,41 @@ flattenLam expr = ([], expr)
 
 unflattenLam :: [a] -> Term a -> Term a
 unflattenLam = flip (foldr Lam)
+
+-- | Resets all the 'CaseSort' annotations within a term.
+-- Only run this on top-level terms, if you are within 'Fix'ed variables
+-- this could cause inconsistency.
+reannotate :: forall g m a t . 
+    (MonadState g m, UniqueGen g, Ord a, TermTraversable t) => t a -> m (t a)
+reannotate = mapTermsM (flip runReaderT (Nothing, mempty) . set)
+  where
+  set :: Term a -> ReaderT (Maybe a, Set a) m (Term a)
+  set (Fix x t) = local (const (Just x, mempty)) $ Fix x `liftM` set t
+  set (Lam x t) = local (second (Set.insert x)) $ Lam x `liftM` set t
+  set (App t1 t2) = App `liftM` set t1 `ap` set t2
+  set (Cse _ term alts) = do
+    (mby_fix, free_vars) <- ask
+    let fold_split = isVar term 
+          && fromVar term `Set.member` free_vars
+          && isJust mby_fix
+    srt <- if not fold_split
+           then return SimpleCase
+           else do
+             new_name <- Name.invent
+             return $ FoldCase new_name (fromJust mby_fix)
+    term' <- set term
+    alts' <- mapM (setAlt fold_split) alts
+    return $ Cse srt term' alts'
+  set other = return other
+  
+  setAlt fold_split (Alt con vars term) = do
+    term' <- if fold_split 
+             then addVars (set term)
+             else set term
+    return $ Alt con vars term'
+    where
+    var_set = Set.fromList vars
+    addVars = local $ second $ Set.union var_set
 
 -- | A 'Foldable' instance which does not include annotations
 newtype IgnoreAnnotations a 

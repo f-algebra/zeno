@@ -85,26 +85,28 @@ simplify term@(Term.Fix fix_var fix_term)
       $ context 
       $ applyFixArgs (Term.Var fix_var)
   
-simplify term@(Term.Cse outer_name outer_fx outer_term outer_alts)
+simplify term@(Term.Cse outer_sort outer_term outer_alts)
   | Term.isCse outer_term = do
       new_inner_alts <- mapM pushIntoAlt (Term.caseOfAlts outer_term)
       tell (Any True, mempty)
       simplify 
         $ outer_term { Term.caseOfAlts = new_inner_alts,
-                       Term.caseOfFix = outer_fx }
+                       Term.caseOfSort = outer_sort }
   where
-  inner_fx = Term.caseOfFix outer_term 
+  inner_sort = Term.caseOfSort outer_term 
     
-  pushIntoAlt :: MonadState ZenoState m => ZAlt -> m ZAlt
+  pushIntoAlt :: ZAlt -> Simplify ZAlt
   pushIntoAlt alt = do
-    cse_name <- Name.invent
-    let new_term = Term.Cse cse_name inner_fx (Term.altTerm alt) outer_alts
+    inner_sort' <- Term.freshenCaseSort inner_sort
+    let new_term = Term.Cse inner_sort' (Term.altTerm alt) outer_alts
     return $ alt { Term.altTerm = new_term }
     
-simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) = 
-  fixed cse_fix $ do
+simplify cse_term@(Term.Cse cse_sort cse_of cse_alts) = 
+  fixed (Term.caseSortFix cse_sort) $ do
     unrolled_fixes <- ask
-    if Term.isFix fun && not (fix_var `elem` unrolled_fixes)
+    if Term.isFoldCase cse_sort
+       && Term.isFix fun 
+       && not (fix_var `elem` unrolled_fixes)
     then simplify $ cse_term { Term.caseOfTerm = normalised }
     else do
       cse_alts' <- mapM simplifyAlt cse_alts
@@ -131,7 +133,7 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
     alt_match = Term.unflattenApp . map Term.Var $ (con:vars)
     cse_of_vars = Var.freeZVars cse_of
     term' = 
-      -- Guard against an invalid substitution
+      -- Guard against an invalid substitution w.r.t. variable scope
       if any (`Set.member` cse_of_vars) vars
       then term
       else normalise $ replaceWithin cse_of alt_match term
@@ -156,20 +158,26 @@ simplify cse_term@(Term.Cse _ cse_fix cse_of cse_alts) =
     containsVar = not . Set.null . Set.intersection vars_set . Var.freeZVars 
 
 simplify term@(Term.App {}) = do
-  flattened <- mapM simplify (Term.flattenApp term) 
-  if not $ Term.isFix $ head (Term.flattenApp term)
-  then return $ Term.unflattenApp flattened
+  (simples, (_, proofs)) <- 
+    listen $ mapM simplify (Term.flattenApp term)
+  let simple = Term.unflattenApp simples
+  if not (null proofs)
+  then simplify $ normalise simple
+  else if not $ Term.isFix $ head (Term.flattenApp term)
+  then return simple
   else do
     mby_hnf <- runMaybeT $ do
-      cxt@(context, _) <- Checker.guessContext (Term.unflattenApp flattened)
-      fill <- Inventor.fill cxt term
+      cxt@(context, _) <- Checker.guessContext simple
+      fill <- trace ("guessed " ++ show (context empty) ++ " for " ++ show simple) $ Inventor.fill cxt simple
       return (context fill)
     case mby_hnf of
-      Nothing -> simplifyApp flattened
+      Nothing -> simplifyApp simples
       Just hnf_term -> do
         let prop = Logic.Clause [] (Logic.Equal term hnf_term)
         tell (mempty, [prop])
-        return $ trace (show term ++ " !> " ++ showWithDefinitions hnf_term) $ hnf_term
+        return 
+       --   $ trace (show term ++ " !> " ++ showWithDefinitions hnf_term) 
+          $ hnf_term
   where
   simplifyApp :: [ZTerm] -> Simplify ZTerm
   simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 
@@ -190,18 +198,19 @@ simplify term@(Term.App {}) = do
           let new_term = Term.unflattenApp $ map Term.Var (new_var : free_vars)
               (term', state', proofs) =
                 runRWS (deforest simplified) (makeDFEnv new_term) state
-              new_fix_term = updateCaseFixes new_var term'
           if not (new_var `elem` Var.freeZVars term') 
           then return original_term
           else do
             new_fix <- simplify
-                     $ Term.Fix new_var (Term.unflattenLam free_vars new_fix_term)
-            let new_term = normalise 
-                         $ Term.unflattenApp (new_fix : map Term.Var free_vars)
-                prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
+                     $ Term.Fix new_var (Term.unflattenLam free_vars term')
+            new_term <- fmap normalise
+                      $ Term.reannotate
+                      $ Term.unflattenApp 
+                      $ new_fix : map Term.Var free_vars
+            let prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
             tell (mempty, inner_proofs ++ proofs ++ [prove_me])
             put state'
-            return $ trace (show original_term ++ " => " ++ show new_term) $  new_term 
+            return new_term 
     where
     original_term = Term.unflattenApp flattened
     unrolled = replaceWithin (Term.Var fix_var) fun fix_term
@@ -213,18 +222,8 @@ simplify term@(Term.App {}) = do
       ++ " -> " ++ show original_term ++ "]"
     
     makeDFEnv new_term = DFEnv
-      { dfFixVar = fix_var,
+      { dfHasSplit = False,
         dfRewrites = [(free_vars_set, Logic.Equal original_term new_term)] }
-        
-    updateCaseFixes new_var term = up term
-      where
-      up (Term.Lam x t) = Term.Lam x (up t)
-      up (Term.App l r) = Term.App (up l) (up r)
-      up (Term.Cse n _ t ts) = Term.Cse n (Just new_var) (up t) (map upA ts)
-        where
-        upA (Term.Alt c v t) = Term.Alt c v (up t)
-      up other = other
-    
 
   simplifyApp app = 
     return (Term.unflattenApp app)
@@ -236,12 +235,13 @@ simplify other =
 type Deforest = RWS DFEnv [ZClause] ZenoState
 
 data DFEnv 
-  = DFEnv     { dfFixVar :: !ZVar,
+  = DFEnv     { dfHasSplit :: !Bool,
                 dfRewrites :: ![(Set ZVar, ZEquation)] }
                 
 caseSplit :: ZVar -> [ZVar] -> Deforest a -> Deforest a
 caseSplit split_var con_args = local $ \env ->
-  env { dfRewrites = concatMap split (dfRewrites env) }
+  env { dfRewrites = concatMap split (dfRewrites env),
+        dfHasSplit = True }
   where
   rec_args = filter ((== typeOf split_var) . typeOf) con_args
   
@@ -262,39 +262,38 @@ attemptRewrite :: ZTerm -> Deforest ZTerm
 attemptRewrite term 
   | not (Type.isVar (typeOf term)) = return term
   | otherwise = do
-      rewrites <- asks dfRewrites
-      first_rewrite <- concatMapM attempt rewrites
-      case Monoid.getFirst first_rewrite of
-        Nothing -> return term
-        Just new_term -> return new_term
+      has_split <- asks dfHasSplit
+      if not has_split
+      then return term
+      else do
+        rewrites <- asks dfRewrites
+        first_rewrite <- concatMapM attempt rewrites
+        case Monoid.getFirst first_rewrite of
+          Nothing -> return term
+          Just new_term -> return new_term
   where
   attempt :: (Set ZVar, ZEquation) -> Deforest (Monoid.First ZTerm)
   attempt (free_vars, Logic.Equal from to) = 
     fmap Monoid.First $ runMaybeT $ do
       guard $ free_vars `Set.isSubsetOf` Var.freeZVars term
-      if from == term
+      if from `alphaEq` term
       then return to
       else do
-        invented_func <- mzero -- Inventor.run ...
-        let guessed_term = Term.App invented_func from
-            prove_me = Logic.Equal guessed_term term
-        tell $ pure $ Logic.Clause mempty prove_me
-        return 
-          $ normalise 
-          $ Term.App invented_func to
+        let prove_me = Logic.Clause mempty $ Logic.Equal from term
+        mby_cex <- runMaybeT (Checker.run prove_me)
+        guard (isNothing mby_cex)
+        tell [prove_me]
+        return to
       
 deforest :: ZTerm -> Deforest ZTerm
 deforest (Term.Lam x t) = 
   Term.Lam x <$> deforest t 
   
-deforest top_term@(Term.Cse cse_id fxs cse_term alts) = do 
+deforest top_term@(Term.Cse cse_sort cse_term alts) = do 
   cse_term' <- deforest cse_term
   alts' <- mapM deforestAlt alts
-  let new_cse = Term.Cse cse_id fxs cse_term' alts'
-  old_fix <- asks dfFixVar
-  if old_fix `elem` Term.IgnoreAnnotations new_cse
-  then attemptRewrite new_cse
-  else return new_cse
+  let new_cse = Term.Cse cse_sort cse_term' alts'
+  attemptRewrite new_cse
   where
   deforestAlt (Term.Alt con vars alt_term) =
     maybeSplit $ Term.Alt con vars <$> deforest alt_term 
@@ -305,10 +304,7 @@ deforest top_term@(Term.Cse cse_id fxs cse_term alts) = do
       
 deforest app@(Term.App fun arg) = do 
   new_app <- Term.App <$> deforest fun <*> deforest arg
-  old_fix <- asks dfFixVar
-  if old_fix `elem` Term.IgnoreAnnotations new_app
-  then attemptRewrite new_app
-  else return new_app
+  attemptRewrite new_app
 
 deforest other = 
   return other
