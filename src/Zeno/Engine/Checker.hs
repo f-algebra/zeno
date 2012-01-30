@@ -1,6 +1,7 @@
 module Zeno.Engine.Checker (
   ZCounterExample, Context (..),
-  run, explore, guessContext
+  run, explore, guessContext,
+  isConstantContext
 ) where
 
 import Prelude ()
@@ -80,6 +81,10 @@ data Context
   = Context   { contextFunction :: ZTerm -> ZTerm,
                 contextArgType :: ZType }
   | Constant  { constantTerm :: ZTerm }
+  
+isConstantContext :: Context -> Bool
+isConstantContext (Constant {}) = True
+isConstantContext _ = False
     
 guessContext :: (MonadPlus m, MonadState ZenoState m) => ZTerm -> m Context
 guessContext term = do

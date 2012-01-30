@@ -200,9 +200,6 @@ stateful st f = do
   r <- ask
   (a, r') <- lift $ runStateT st r
   local (const r') (f a)
-  
-statelocal :: State r b -> Reader r a -> Reader r a
-statelocal st = local $ \r -> execState st r 
 
 duplicates :: forall a . Eq a => [a] -> [a]
 duplicates [] = []

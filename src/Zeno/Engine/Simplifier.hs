@@ -169,6 +169,7 @@ simplify term@(Term.App {}) = do
     more_simple <- simplifyApp simple
     mby_hnf <- runMaybeT $ do
       cxt <- Checker.guessContext more_simple
+      guard (not (Checker.isConstantContext cxt))
       Inventor.fill cxt more_simple
     case mby_hnf of
       Nothing -> return more_simple

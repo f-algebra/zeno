@@ -39,20 +39,34 @@ instance Show (Term a) => Show (Equation a) where
 instance Show (Term a) => Show (Clause a) where
   show = intercalate " ->\n  " . map show . Logic.flatten
 
-type ShowTerm a = Reader (Int, (Map String Int, Map a String))
+type ShowTerm a = ReaderT Int (State (Map String Int, Map a String))
+
+runShowTerm :: Ord a => ShowTerm a b -> b
+runShowTerm = flip evalState mempty . flip runReaderT 0 
 
 instance IndentationMonad (ShowTerm a) where
-  indent = local (first (+ 1))
-  resetIndent = local (first (const 0))
-  indentation = asks $ \(i, _) -> fromString $ "\n" ++ (concat . replicate i) "  "
+  indent = local (+ 1)
+  resetIndent = local (const 0)
+  indentation = asks $ \i -> fromString $ "\n" ++ (concat . replicate i) "  "
 
 showVar :: (Ord a, Show a) => a -> ShowTerm a String
 showVar var = do
-  var_map <- asks (snd . snd)
+  var_map <- gets snd
   case Map.lookup var var_map of
-    Nothing -> return (show var)
     Just name -> return name
-  
+    Nothing -> do
+      i_map <- gets fst
+      case Map.lookup var_s i_map of
+        Nothing -> do
+          modify $ Map.insert var_s 2 *** Map.insert var var_s
+          return var_s
+        Just i -> do
+          let new_name = var_s ++ show i
+          modify $ Map.insert var_s (i + 1) *** Map.insert var new_name
+          return new_name
+  where
+  var_s = show var
+  {-
 bindVar :: (Ord a, Show a) => a -> ShowTerm a b -> ShowTerm a b
 bindVar var = local $ second $ updateMaps
   where
@@ -68,9 +82,9 @@ bindVar var = local $ second $ updateMaps
   
 bindVars :: (Ord a, Show a) => [a] -> ShowTerm a b -> ShowTerm a b
 bindVars = appEndo . concatMap (Endo . bindVar)
-  
+  -}
 showAlt :: (Ord a, Show a) => Alt a -> ShowTerm a String
-showAlt (Term.Alt con binds rhs) = bindVars binds $ do
+showAlt (Term.Alt con binds rhs) = do
   i <- indentation
   rhs_s <- indent $ showTerm rhs
   binds_s <- mapM showVar binds
@@ -89,10 +103,10 @@ showTerm (Term.App lhs rhs) = do
   return $ lhs_s ++ " " ++ rhs_s 
 showTerm expr@(Term.Lam {}) = do
   let (vars, rhs) = Term.flattenLam expr
-      vars_s = intercalate " " (map show vars)
-  rhs_s <- bindVars vars $ showTerm rhs
+  vars_s <- intercalate " " <$> mapM showVar vars
+  rhs_s <- showTerm rhs
   return $ "fun " ++ vars_s ++ " -> " ++ rhs_s
-showTerm (Term.Fix f e) =  return (show f) {-
+showTerm (Term.Fix f e) = showVar f {-
   do
     e' <- showTerm e
     return $ "(fix " ++ show f ++ " in " ++ e' ++ ")" -}
@@ -107,10 +121,10 @@ showTerm (Term.Cse srt lhs alts) = indent $ do
   return $ i ++ srt_s ++ "case " ++ lhs'' ++ " of" ++ alts'
   
 instance (Ord a, Show a) => Show (Alt a) where
-  show = flip runReader (0, mempty) . showAlt
+  show = runShowTerm . showAlt
 
 instance (Ord a, Show a) => Show (Term a) where
-  show = flip runReader (0, mempty) . showTerm
+  show = runShowTerm . showTerm
     
 showTyped :: (Show a, Typed a, Show (Type (SimpleType a))) => a -> String
 showTyped x = show x ++ " : " ++ show (typeOf x)
