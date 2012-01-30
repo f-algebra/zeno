@@ -96,13 +96,15 @@ showTerm (Term.Fix f e) =  return (show f) {-
   do
     e' <- showTerm e
     return $ "(fix " ++ show f ++ " in " ++ e' ++ ")" -}
-showTerm (Term.Cse _ lhs alts) = indent $ do
+showTerm (Term.Cse srt lhs alts) = indent $ do
   i <- indentation
   alts' <- concatMapM showAlt $ alts
   lhs' <- indent . showTerm $ lhs
   let lhs'' | Term.isVar lhs = lhs'
             | otherwise = "(" ++ lhs' ++ ")"
-  return $ i ++ "case " ++ lhs'' ++ " of" ++ alts'
+      srt_s | Term.isFoldCase srt = ""
+            | otherwise = "?"
+  return $ i ++ srt_s ++ "case " ++ lhs'' ++ " of" ++ alts'
   
 instance (Ord a, Show a) => Show (Alt a) where
   show = flip runReader (0, mempty) . showAlt
@@ -115,10 +117,12 @@ showTyped x = show x ++ " : " ++ show (typeOf x)
 
 showWithDefinitions :: forall a t .
   (WithinTraversable (Term a) (t a), Show (t a), Ord a, Show a) => t a -> String
-showWithDefinitions has_terms = show has_terms ++ "\nwhere\n" ++ defs
+showWithDefinitions has_terms = show has_terms ++ defs_s
   where
-  defs = intercalate "\n"                
-       $ map showDef 
+  defs_s | null defs = ""
+         | otherwise = "\nwhere\n" ++ intercalate "\n" defs
+  
+  defs = map showDef 
        $ Map.toList
        $ foldWithin collectDefs has_terms
   

@@ -5,7 +5,7 @@ module Zeno.Term (
   TermTraversable (..),
   isVar, fromVar, isApp, isCse, isLam, isFix, isFoldCase,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
-  function, isNormal, 
+  function, isNormal, isFixTerm,
   caseSortFix, reannotate, freshenCaseSort
 ) where
 
@@ -102,8 +102,12 @@ isFix :: Term a -> Bool
 isFix (Fix {}) = True
 isFix _ = False
 
+isFixTerm :: Term a -> Bool
+isFixTerm = isFix . head . flattenApp
+
 isFoldCase :: CaseSort a -> Bool
 isFoldCase (FoldCase {}) = True
+isFoldCase _ = False
 
 caseSortFix :: CaseSort a -> Maybe a
 caseSortFix (FoldCase _ fix) = Just fix

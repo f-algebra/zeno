@@ -52,10 +52,11 @@ command ("explore", arg) = do
     ++ intercalate "\n" (map show potentials)
   case mby_context of
     Nothing -> return ()
-    Just (cxt, typ) -> do
-      cxt_filler <- Term.Var <$> Var.declare "" typ Var.Bound
-      Zeno.print $
-        "Guessed context: " ++ show (cxt cxt_filler) ++ "{" ++ show typ ++ "}"
+    Just (Checker.Constant kterm) -> 
+      Zeno.print $ "Guessed constant term: " ++ show kterm
+    Just (Checker.Context cxt typ) -> do
+      cxt_filler <- Term.Var <$> Var.declare ("{" ++ show typ ++ "}") typ Var.Bound
+      Zeno.print $ "Guessed context: " ++ show (cxt cxt_filler)
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))
@@ -66,8 +67,9 @@ command ("simplify", arg) = do
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
       Just (term', prove_me) ->
-        show term ++ "\n\nsimplifies to\n\n" ++ showWithDefinitions term'
-        ++ "\n\nif the following hold\n\n" ++ (intercalate "\n\n" . map show) prove_me
+        show term ++ "\n\nsimplifies to:\n\n" ++ showWithDefinitions term'
+        ++ "\n\nusing the following properties:\n\n" 
+        ++ (intercalate "\n\n" . map showWithDefinitions) prove_me
 command ("invent", arg) = do
   (func, args, res) <- ZML.readSpec arg
   mby_def <- undefined -- (Inventor.run ...)

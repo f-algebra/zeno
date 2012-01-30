@@ -13,7 +13,7 @@ module Zeno.Var (
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
   caseSplit, withinContext,
-  destructible,
+  destructible, isHNF,
   makeUniversal, makeBound
 ) where
 
@@ -81,6 +81,10 @@ isConstructor _ = False
 isConstructorTerm :: ZTerm -> Bool
 isConstructorTerm = 
   fromMaybe False . fmap isConstructor . Term.function 
+  
+isHNF :: ZTerm -> Bool
+isHNF term = Term.isVar term 
+          || isConstructorTerm term
 
 isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True

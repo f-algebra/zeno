@@ -12,7 +12,7 @@ let rec (app : list -> list -> list) =
   fun (xs : list) (ys : list) -> 
     case xs of
       nil -> ys
-    | cons x xs' -> cons x (app xs' ys);
+    | cons z zs -> cons z (app zs ys);
     
 let rec (rev : list -> list) = 
   fun (xs : list) ->
@@ -44,6 +44,33 @@ let rec (len : list -> nat) =
     | nil -> 0
     | cons y ys -> succ (len ys);
     
+let rec (ins : nat -> list -> list) =
+  fun (x : nat) (xs : list) -> 
+    case xs of
+    | nil -> cons x nil
+    | cons y ys -> 
+        case (leq x y) of
+        | true -> cons x xs
+        | false -> cons y (ins x ys);
+        
+let rec (isort : list -> list) = 
+  fun (xs : list) ->
+    case xs of
+    | nil -> nil
+    | cons y ys -> ins y (isort ys);
+    
+let rec (ord : list -> bool) = 
+  fun (xs : list) ->
+    case xs of
+    | nil -> true
+    | cons y ys -> 
+        case ys of
+        | nil -> true
+        | cons z zs -> 
+            case leq y z of
+            | true -> ord ys
+            | false -> false;
+    
 prop add_0 =
   all (x : nat) -> add x 0 = x;
   
@@ -57,5 +84,5 @@ let rec (app1 : list -> nat -> list) =
     | cons y ys -> cons y (app1 ys x);
     
 simplify 
-  fun (xs : list) (x : nat) -> (rev (rev xs));
+  fun (xs : list) (x : nat) -> (ord (isort xs));
 

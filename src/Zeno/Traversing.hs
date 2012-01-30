@@ -1,5 +1,3 @@
-{-# LANGUAGE FunctionalDependencies #-}
-
 module Zeno.Traversing (
   WithinTraversable (..), HasVariables (..),
   Substitution, replaceWithin,
@@ -29,6 +27,12 @@ class WithinTraversable t f where
   
   substitute :: Ord t => Substitution t t -> f -> f
   substitute map = mapWithin (\t -> Map.findWithDefault t t map)
+  
+instance WithinTraversable t f => WithinTraversable t [f] where
+  mapWithinM f = mapM (mapWithinM f)
+  mapWithin f = map (mapWithin f)
+  foldWithin f = foldMap (foldWithin f)
+  substitute s = map (substitute s)
 
 isOneToOne :: Ord b => Substitution a b -> Bool
 isOneToOne = not . containsDuplicates . Map.elems

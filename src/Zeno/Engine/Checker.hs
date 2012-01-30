@@ -45,8 +45,12 @@ firstM f (a:as) = do
   maybe (firstM f as) (return . Just) mby_b
       
 explore :: forall m . MonadState ZenoState m => ZTerm -> m [ZTerm]
-explore = expl maxDepth <=< Term.reannotate
+explore term = do
+  explored <- expl maxDepth =<< Term.reannotate term
+  return $ nubOrd $ checkCount explored
   where
+  checkCount ts = assert (length ts >= maxDepth) ts
+  
   expl :: Int -> ZTerm -> m [ZTerm]
   expl depth term 
     | depth > 0
@@ -77,27 +81,25 @@ data Context
                 contextArgType :: ZType }
   | Constant  { constantTerm :: ZTerm }
     
-guessContext :: (MonadPlus m, MonadState ZenoState m) => 
-  ZTerm -> m Context
+guessContext :: (MonadPlus m, MonadState ZenoState m) => ZTerm -> m Context
 guessContext term = do
   potentials <- explore term
-  if length potentials < maxDepth 
-  then mzero
-  else
+  guard (not $ null potentials)
+  let (p:ps) = potentials
+  if all (alphaEq p) ps
+  then return (Constant p)
+  else 
     case matchContext potentials of
       Nothing -> mzero
-      Just context -> return context
+      Just (context, gap_type) -> return (Context context gap_type)
   where
-  matchContext :: [ZTerm] -> Maybe Context
-  matchContext [] = 
-  matchContext (fst:rest)
-    | Term.isVar fst
-    , all (== fst) rest = Just (const fst, empty)
+  matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm, ZType)
   matchContext terms = do
     guard (Var.isConstructorTerm fst_con)
     guard (all (== fst_con) other_cons)
-    guard (length gap_is <= 1)
-    return $ case matchContext gaps of
+    assert (not $ null gap_is) $ return ()
+    guard (length gap_is == 1)
+    Just $ case matchContext gaps of
       Nothing -> (context, gap_type)
       Just (inner_context, inner_type) -> (context . inner_context, inner_type)
     where

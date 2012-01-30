@@ -91,13 +91,13 @@ simplify term@(Term.Cse outer_sort outer_term outer_alts)
       tell (Any True, mempty)
       simplify 
         $ outer_term { Term.caseOfAlts = new_inner_alts,
-                       Term.caseOfSort = outer_sort }
+                       Term.caseOfSort = inner_sort }
   where
   inner_sort = Term.caseOfSort outer_term 
     
   pushIntoAlt :: ZAlt -> Simplify ZAlt
   pushIntoAlt alt = do
-    inner_sort' <- Term.freshenCaseSort inner_sort
+    inner_sort' <- Term.freshenCaseSort outer_sort
     let new_term = Term.Cse inner_sort' (Term.altTerm alt) outer_alts
     return $ alt { Term.altTerm = new_term }
     
@@ -158,40 +158,40 @@ simplify cse_term@(Term.Cse cse_sort cse_of cse_alts) =
     containsVar = not . Set.null . Set.intersection vars_set . Var.freeZVars 
 
 simplify term@(Term.App {}) = do
-  (simples, (_, proofs)) <- 
+  (simples, (_, proofs)) <-
     listen $ mapM simplify (Term.flattenApp term)
   let simple = Term.unflattenApp simples
   if not (null proofs)
-  then simplify $ normalise simple
-  else if not $ Term.isFix $ head (Term.flattenApp term)
+  then simplify (normalise simple)
+  else if not (Term.isFixTerm simple)
   then return simple
   else do
+    more_simple <- simplifyApp simple
     mby_hnf <- runMaybeT $ do
-      cxt@(context, _) <- Checker.guessContext simple
-      fill <- trace ("guessed " ++ show (context empty) ++ " for " ++ show simple) $ Inventor.fill cxt simple
-      return (context fill)
+      cxt <- Checker.guessContext more_simple
+      Inventor.fill cxt more_simple
     case mby_hnf of
-      Nothing -> simplifyApp simples
+      Nothing -> return more_simple
       Just hnf_term -> do
-        let prop = Logic.Clause [] (Logic.Equal term hnf_term)
+        let prop = Logic.Clause [] (Logic.Equal more_simple hnf_term)
         tell (mempty, [prop])
         return 
        --   $ trace (show term ++ " !> " ++ showWithDefinitions hnf_term) 
           $ hnf_term
   where
-  simplifyApp :: [ZTerm] -> Simplify ZTerm
-  simplifyApp flattened@(fun@(Term.Fix fix_var fix_term) : args) 
-    | Type.isVar (typeOf original_term) = do
+  simplifyApp :: ZTerm -> Simplify ZTerm
+  simplifyApp orig_term@(Term.flattenApp -> (fun@(Term.Fix fix_var fix_term) : args)) 
+    | Type.isVar (typeOf orig_term) = do
       already_unrolled <- isFixed fix_var
       if already_unrolled
-      then return original_term
+      then return orig_term
       else do
         (simplified, (cse_float_occurred, inner_proofs)) <- id
-          $ censor (const mempty)
+    --      $ censor (const mempty)
           $ listen 
           $ simplify normalised
         if not (getAny cse_float_occurred)
-        then return original_term
+        then return orig_term
         else do
           state <- get
           new_var <- Var.declare var_name fun_type Var.Bound
@@ -199,7 +199,7 @@ simplify term@(Term.App {}) = do
               (term', state', proofs) =
                 runRWS (deforest simplified) (makeDFEnv new_term) state
           if not (new_var `elem` Var.freeZVars term') 
-          then return original_term
+          then return orig_term
           else do
             new_fix <- simplify
                      $ Term.Fix new_var (Term.unflattenLam free_vars term')
@@ -207,26 +207,22 @@ simplify term@(Term.App {}) = do
                       $ Term.reannotate
                       $ Term.unflattenApp 
                       $ new_fix : map Term.Var free_vars
-            let prove_me = Logic.Clause [] (Logic.Equal original_term new_term)
+            let prove_me = Logic.Clause [] (Logic.Equal orig_term new_term)
             tell (mempty, inner_proofs ++ proofs ++ [prove_me])
             put state'
             return new_term 
     where
-    original_term = Term.unflattenApp flattened
     unrolled = replaceWithin (Term.Var fix_var) fun fix_term
     normalised = normalise $ Term.unflattenApp (unrolled : args)
-    free_vars_set = Var.freeZVars original_term
+    free_vars_set = Var.freeZVars orig_term
     free_vars = toList free_vars_set
-    fun_type = Type.unflatten $ (map typeOf free_vars) ++ [typeOf original_term]
+    fun_type = Type.unflatten $ (map typeOf free_vars) ++ [typeOf orig_term]
     var_name = "[" ++ (intercalate " " . map show) free_vars 
-      ++ " -> " ++ show original_term ++ "]"
+      ++ " -> " ++ show orig_term ++ "]"
     
     makeDFEnv new_term = DFEnv
       { dfHasSplit = False,
-        dfRewrites = [(free_vars_set, Logic.Equal original_term new_term)] }
-
-  simplifyApp app = 
-    return (Term.unflattenApp app)
+        dfRewrites = [(free_vars_set, Logic.Equal orig_term new_term)] }
     
 simplify other = 
   return other

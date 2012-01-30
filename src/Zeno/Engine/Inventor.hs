@@ -51,8 +51,9 @@ splitRewrites var con_term = local (concatMap split)
     
     
 fill :: (MonadState ZenoState m, MonadPlus m) =>
-  (ZTerm -> ZTerm, ZType) -> ZTerm -> m ZTerm
-fill (context, fill_type) desired_value = do
+  Checker.Context -> ZTerm -> m ZTerm
+fill (Checker.Constant kterm) desired_value = return kterm
+fill (Checker.Context context fill_type) desired_value = do
   fix_var <- Var.invent fun_type Var.Bound
   let rewrite_term = Term.unflattenApp (map Term.Var (fix_var : free_vars))
       rewrite = Logic.Equal desired_value (context rewrite_term)
@@ -67,12 +68,13 @@ fill (context, fill_type) desired_value = do
     Nothing -> mzero
     Just filler -> do
       put new_state
-      Term.reannotate
+      filler' <- Term.reannotate
         $ (\t -> Term.unflattenApp (t : map Term.Var free_vars))  
         $ Term.Fix fix_var
         $ Term.unflattenLam free_vars
         $ Var.makeBound free_vars
         $ filler
+      return (context filler')
   where
   free_vars = Set.toList $ Var.freeZVars desired_value
   arg_types = map typeOf free_vars

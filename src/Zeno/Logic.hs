@@ -57,13 +57,13 @@ instance TermTraversable Equation where
 instance Ord a => WithinTraversable (Term a) (Clause a) where
   mapWithinM f = mapTermsM (mapWithinM f)
   mapWithin f = mapTerms (mapWithin f)
-  foldWithin f = concatMap f . termList
+  foldWithin f = concatMap (foldWithin f) . termList
   substitute s = mapTerms (substitute s)
   
 instance Ord a => WithinTraversable (Term a) (Equation a) where
   mapWithinM f = mapTermsM (mapWithinM f)
   mapWithin f = mapTerms (mapWithin f)
-  foldWithin f = concatMap f . termList
+  foldWithin f = concatMap (foldWithin f) . termList
   substitute s = mapTerms (substitute s)  
   
 addAntecedent :: Equation a -> Clause a -> Clause a
