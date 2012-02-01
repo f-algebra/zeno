@@ -117,7 +117,7 @@ distinguishFixes = mapWithinM distinguish
         return $ cse { Term.caseOfSort = Term.FoldCase new_name fix }
   distinguish (Term.Fix var term) = do
     new_var <- clone var
-    let new_term = replace var new_var term
+    let new_term = replaceWithin (Term.Var var) (Term.Var new_var) term
     return (Term.Fix new_var new_term)
   distinguish other = 
     return other

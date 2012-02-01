@@ -245,22 +245,6 @@ instance Ord a => Unifiable (Alt a) where
     
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
-  
-instance Ord a => WithinTraversable a (Term a) where
-  mapWithinM f = mapWithinM g 
-    where
-    g (Var x) = liftM Var (f x)
-    g t = return t
-    
-  mapWithin f = mapWithin g
-    where
-    g (Var x) = Var (f x)
-    g t = t
-    
-  substitute sub = substitute sub'' 
-    where
-    sub' = Map.mapKeysMonotonic Var sub
-    sub'' = Map.map Var sub'
     
 instance Ord a => WithinTraversable (Term a) (Term a) where
   mapWithinM f (App lhs rhs) =

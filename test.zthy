@@ -70,6 +70,16 @@ let rec (ord : list -> bool) =
             case leq y z of
             | true -> ord ys
             | false -> false;
+            
+let rec (drop : nat -> list -> list) = 
+  fun (n : nat) (xs : list) ->
+    case n of
+    | 0 -> xs
+    | succ m -> 
+        case xs of
+        | nil -> nil
+        | cons y ys -> drop m ys;
+    
     
 prop add_0 =
   all (x : nat) -> add x 0 = x;
@@ -84,5 +94,5 @@ let rec (app1 : list -> nat -> list) =
     | cons y ys -> cons y (app1 ys x);
     
 simplify 
-  fun (xs : list) (x : nat) -> (ord (ins x xs));
+  fun (xs : list) (a : nat) (b : nat) -> len (rev xs);
 

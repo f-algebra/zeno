@@ -97,7 +97,7 @@ simplify term@(Term.Cse outer_sort outer_term outer_alts)
     
   pushIntoAlt :: ZAlt -> Simplify ZAlt
   pushIntoAlt alt = do
-    inner_sort' <- Term.freshenCaseSort outer_sort
+    inner_sort' <- Term.freshenCaseSort inner_sort
     let new_term = Term.Cse inner_sort' (Term.altTerm alt) outer_alts
     return $ alt { Term.altTerm = new_term }
     
@@ -176,8 +176,8 @@ simplify term@(Term.App {}) = do
       Just hnf_term -> do
         let prop = Logic.Clause [] (Logic.Equal more_simple hnf_term)
         tell (mempty, [prop])
-        return 
-       --   $ trace (show term ++ " !> " ++ showWithDefinitions hnf_term) 
+        return      
+          $ trace (show term ++ " !> " ++ showWithDefinitions hnf_term) 
           $ hnf_term
   where
   simplifyApp :: ZTerm -> Simplify ZTerm
@@ -200,7 +200,7 @@ simplify term@(Term.App {}) = do
               (term', state', proofs) =
                 runRWS (deforest simplified) (makeDFEnv new_term) state
           if not (new_var `elem` Var.freeZVars term') 
-          then return orig_term
+          then trace ("failed!\n" ++ show simplified) $ return orig_term
           else do
             new_fix <- simplify
                      $ Term.Fix new_var (Term.unflattenLam free_vars term')
@@ -252,8 +252,8 @@ caseSplit split_var con_args = local $ \env ->
         Set.insert new_var
         $ Set.delete split_var 
         $ free_vars
-      from' = replace split_var new_var from
-      to' = replace split_var new_var to
+      from' = normalise $ replaceWithin (Term.Var split_var) (Term.Var new_var) from
+      to' = normalise $ replaceWithin (Term.Var split_var) (Term.Var new_var) to
 
 attemptRewrite :: ZTerm -> Deforest ZTerm
 attemptRewrite term 

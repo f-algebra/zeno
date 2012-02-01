@@ -18,6 +18,7 @@ type Substitution = Map
 
 class WithinTraversable t f where
   mapWithinM :: Monad m => (t -> m t) -> f -> m f
+  substitute :: Ord t => Substitution t t -> f -> f
   
   mapWithin :: (t -> t) -> f -> f
   mapWithin = mapM_to_fmap mapWithinM
@@ -25,8 +26,6 @@ class WithinTraversable t f where
   foldWithin :: Monoid m => (t -> m) -> f -> m
   foldWithin g = execWriter . mapWithinM (\t -> tell (g t) >> return t)
   
-  substitute :: Ord t => Substitution t t -> f -> f
-  substitute map = mapWithin (\t -> Map.findWithDefault t t map)
   
 instance WithinTraversable t f => WithinTraversable t [f] where
   mapWithinM f = mapM (mapWithinM f)
