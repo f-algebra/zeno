@@ -90,19 +90,19 @@ isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True
 isUniversal _ = False
 
-makeUniversal :: WithinTraversable ZVar t => [ZVar] -> t -> t
+makeUniversal :: WithinTraversable ZTerm t => [ZVar] -> t -> t
 makeUniversal vars = substitute sub
   where 
   uni x = assert (not $ isConstructor x)
         $ x { sort = Universal mempty }
-  sub = Map.fromList (vars `zip` map uni vars)
+  sub = Map.fromList $ map (Term.Var *** Term.Var) (vars `zip` map uni vars)
 
-makeBound :: WithinTraversable ZVar t => [ZVar] -> t -> t
+makeBound :: WithinTraversable ZTerm t => [ZVar] -> t -> t
 makeBound vars = substitute sub
   where 
   bnd x = assert (not $ isConstructor x)
         $ x { sort = Bound}
-  sub = Map.fromList (vars `zip` map bnd vars)
+  sub = Map.fromList $ map (Term.Var *** Term.Var) (vars `zip` map bnd vars)
   
 freeZVars :: (HasVariables a, Var a ~ ZVar) => a -> Set ZVar
 freeZVars = Set.filter (not . isConstructor) . freeVars

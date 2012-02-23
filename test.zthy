@@ -94,5 +94,5 @@ let rec (app1 : list -> nat -> list) =
     | cons y ys -> cons y (app1 ys x);
     
 simplify 
-  fun (xs : list) (a : nat) (b : nat) -> len (rev xs);
+  fun (xs : list) (a : nat) (b : nat) -> rev (rev (rev (rev xs)));
 
