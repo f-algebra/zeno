@@ -39,9 +39,9 @@ run term = do
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt
 freshenAltVars (Term.Alt con vars term) = do
   new_vars <- mapM Var.clone vars
-  let sub = Map.fromList $ map (Term.Var *** Term.Var) $ zip vars new_vars
-      new_term = substitute sub term
+  let new_term = substitute (Map.fromList (zip vars new_vars)) term
   return (Term.Alt con new_vars new_term)
+    
 
 type Simplify = RWS (Set ZVar) (Any, [ZClause]) ZenoState
          
@@ -169,7 +169,6 @@ simplify term@(Term.App {}) = do
     more_simple <- simplifyApp simple
     mby_hnf <- runMaybeT $ do
       cxt <- Checker.guessContext more_simple
-      mzero
       guard (not (Checker.isConstantContext cxt))
       Inventor.fill cxt more_simple
     case mby_hnf of

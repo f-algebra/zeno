@@ -2,13 +2,12 @@ module Zeno.Unification (
   Unifiable (..), Unification (..), 
   applyUnification, mergeUnifiers, 
   allUnifiers, unifyMany, alphaEq
-) where
+) where 
 
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Utils
 import Zeno.Traversing
-import Zeno.Unique
 
 import qualified Data.Map as Map
 
@@ -54,9 +53,9 @@ mergeUnifiers = foldl' addUni []
   where addUni subs NoUnifier = subs
         addUni subs (Unifier sub) = sub : subs
         
-applyUnification :: (MonadUnique m, WithinTraversable a f, Ord a) =>
-  Unification a a -> f -> m f
-applyUnification NoUnifier = return
+applyUnification :: (WithinTraversable a f, Ord a) =>
+  Unification a a -> f -> f
+applyUnification NoUnifier = id
 applyUnification (Unifier sub) = substitute sub
 
 allUnifiers :: (Unifiable a, WithinTraversable a f, Eq a) => 

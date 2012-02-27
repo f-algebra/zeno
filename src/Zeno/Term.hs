@@ -213,9 +213,9 @@ instance Ord a => Unifiable (Term a) where
   unifier (App f1 a1) (App f2 a2) =
     unifier f1 f2 `mappend` unifier a1 a2
   unifier (Lam v1 x1) (Lam v2 x2) = 
-    unifier x1 (replaceWithin (Var v2) (Var v1) x2)
+    unifier x1 (replaceWithin v2 v1 x2)
   unifier (Fix v1 x1) (Fix v2 x2) =
-    unifier x1 (replaceWithin (Var v2) (Var v1) x2)
+    unifier x1 (replaceWithin v2 v1 x2)
   unifier (Cse _ t1 as1) (Cse _ t2 as2)
     | length as1 /= length as2 = NoUnifier
     | otherwise = unifier t1 t2 `mappend` alts_uni
@@ -241,7 +241,7 @@ instance Ord a => Unifiable (Alt a) where
     | k1 /= k2 = NoUnifier
     | otherwise = unifier t1 t2' 
     where
-    t2' = substitute (Map.fromList $ map (Var *** Var) $ zip vs2 vs1) t2
+    t2' = substitute (Map.fromList $ zip vs2 vs1) t2
     
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
