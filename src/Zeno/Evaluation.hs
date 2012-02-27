@@ -57,7 +57,7 @@ criticalPair term
     where
     unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
     unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
-  critical (Term.Cse Term.SimpleCase cse_term _) =
+  critical (Term.Cse Term.SplitCase cse_term _) =
     return cse_term
   critical (Term.Cse (Term.FoldCase name _) cse_term _) = do
     tell [name]

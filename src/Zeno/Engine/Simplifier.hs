@@ -39,9 +39,9 @@ run term = do
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt
 freshenAltVars (Term.Alt con vars term) = do
   new_vars <- mapM Var.clone vars
-  let new_term = substitute (Map.fromList (zip vars new_vars)) term
+  let sub = Map.fromList $ map (Term.Var *** Term.Var) $ zip vars new_vars
+      new_term = substitute sub term
   return (Term.Alt con new_vars new_term)
-    
 
 type Simplify = RWS (Set ZVar) (Any, [ZClause]) ZenoState
          

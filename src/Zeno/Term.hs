@@ -40,7 +40,7 @@ data Alt a
   
 data CaseSort a
   = FoldCase !Name !a
-  | SimpleCase
+  | SplitCase
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
   
 type TermSubstitution a = Substitution (Term a) (Term a)
@@ -115,7 +115,7 @@ caseSortFix _ = Nothing
 
 freshenCaseSort :: 
     (MonadState g m, UniqueGen g) => CaseSort a -> m (CaseSort a)
-freshenCaseSort SimpleCase = return SimpleCase
+freshenCaseSort SplitCase = return SplitCase
 freshenCaseSort (FoldCase name fix) = do
   new_name <- Name.clone name
   return (FoldCase new_name fix)
@@ -173,7 +173,7 @@ reannotate = mapTermsM (flip runReaderT (Nothing, mempty) . set)
           && fromVar term `Set.member` free_vars
           && isJust mby_fix
     srt <- if not fold_split
-           then return SimpleCase
+           then return SplitCase
            else do
              new_name <- Name.invent
              return $ FoldCase new_name (fromJust mby_fix)
@@ -213,9 +213,9 @@ instance Ord a => Unifiable (Term a) where
   unifier (App f1 a1) (App f2 a2) =
     unifier f1 f2 `mappend` unifier a1 a2
   unifier (Lam v1 x1) (Lam v2 x2) = 
-    unifier x1 (replaceWithin v2 v1 x2)
+    unifier x1 (replaceWithin (Var v2) (Var v1) x2)
   unifier (Fix v1 x1) (Fix v2 x2) =
-    unifier x1 (replaceWithin v2 v1 x2)
+    unifier x1 (replaceWithin (Var v2) (Var v1) x2)
   unifier (Cse _ t1 as1) (Cse _ t2 as2)
     | length as1 /= length as2 = NoUnifier
     | otherwise = unifier t1 t2 `mappend` alts_uni
@@ -241,7 +241,7 @@ instance Ord a => Unifiable (Alt a) where
     | k1 /= k2 = NoUnifier
     | otherwise = unifier t1 t2' 
     where
-    t2' = substitute (Map.fromList $ zip vs2 vs1) t2
+    t2' = substitute (Map.fromList $ map (Var *** Var) $ zip vs2 vs1) t2
     
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
@@ -284,7 +284,7 @@ instance Ord a => WithinTraversable (Term a) (Alt a) where
     sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
     
 instance Empty (CaseSort a) where
-  empty = SimpleCase
+  empty = SplitCase
     
 instance (Eq (SimpleType a), Typed a, Show (Type (SimpleType a)), Show (Term a)) 
     => Typed (Term a) where
