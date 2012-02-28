@@ -26,7 +26,6 @@ class WithinTraversable t f where
   foldWithin :: Monoid m => (t -> m) -> f -> m
   foldWithin g = execWriter . mapWithinM (\t -> tell (g t) >> return t)
   
-  
 instance WithinTraversable t f => WithinTraversable t [f] where
   mapWithinM f = mapM (mapWithinM f)
   mapWithin f = map (mapWithin f)

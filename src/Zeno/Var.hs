@@ -56,7 +56,7 @@ instance Ord ZVar where
   compare = compare `on` name
   
 type CriticalPath = [Name]
-type CriticalPair = (ZTerm, CriticalPath)
+type CriticalPair = (ZTerm -> ZTerm, CriticalPath)
 
 -- |The different /sorts/ of variable within Zeno.
 data ZVarSort

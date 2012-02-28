@@ -35,7 +35,7 @@ instance HasVariables (Clause a) where
     consVars = freeVars (consequent cls)
     antsVars = Set.unions $ map freeVars (antecedents cls)
     
-instance TermTraversable Clause where
+instance TermTraversable (Clause a) a where
   mapTermsM f (Clause antes consq) = 
     Clause `liftM` mapM (mapTermsM f) antes `ap` mapTermsM f consq
     
@@ -45,7 +45,7 @@ instance TermTraversable Clause where
   termList (Clause antes consq) = 
     concatMap termList (antes ++ [consq])
     
-instance TermTraversable Equation where
+instance TermTraversable (Equation a) a where
   mapTermsM f (Equal t1 t2) = 
     Equal `liftM` f t1 `ap` f t2
     

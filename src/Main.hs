@@ -7,6 +7,7 @@ import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Var ( ZTerm )
 import Zeno.Show
 import Zeno.Evaluation ( normalise )
+import Zeno.Engine.Deforester
 
 import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Inventor as Inventor

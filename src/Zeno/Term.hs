@@ -68,16 +68,16 @@ instance HasVariables (Alt a) where
     
 -- | Represents traversing over top-level 'Term's only, 
 -- does not recurse into sub-terms.
-class TermTraversable t where
-  mapTermsM :: Monad m => (Term a -> m (Term a)) -> t a -> m (t a)
+class TermTraversable t a | t -> a where
+  mapTermsM :: Monad m => (Term a -> m (Term a)) -> t -> m t
 
-  mapTerms :: (Term a -> Term a) -> t a -> t a
+  mapTerms :: (Term a -> Term a) -> t -> t
   mapTerms f = runIdentity . mapTermsM (return . f)   
   
-  termList :: t a -> [Term a]
+  termList :: t -> [Term a]
   termList = execWriter . mapTermsM (\t -> tell [t] >> return t)
   
-instance TermTraversable Term where
+instance TermTraversable (Term a) a where
   mapTermsM = ($)
   mapTerms = ($)
   termList = pure
@@ -160,7 +160,7 @@ unflattenLam = flip (foldr Lam)
 -- Only run this on top-level terms, if you are within 'Fix'ed variables
 -- this could cause inconsistency.
 reannotate :: forall g m a t . 
-    (MonadState g m, UniqueGen g, Ord a, TermTraversable t) => t a -> m (t a)
+    (MonadState g m, UniqueGen g, Ord a, TermTraversable t a) => t -> m t
 reannotate = mapTermsM (flip runReaderT (Nothing, mempty) . set)
   where
   set :: Term a -> ReaderT (Maybe a, Set a) m (Term a)

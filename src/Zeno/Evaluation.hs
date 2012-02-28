@@ -1,6 +1,6 @@
 -- | Beta-reduction
 module Zeno.Evaluation (
-  normalise, strictTerm, criticalPair
+  normalise, strictTerm
 ) where                    
 
 import Prelude ()
@@ -25,7 +25,7 @@ fixed :: Maybe ZVar -> Eval a -> Eval a
 fixed Nothing = id
 fixed (Just var) = local (Set.insert var)
 
-normalise :: TermTraversable t => t ZVar -> t ZVar
+normalise :: TermTraversable t ZVar => t -> t
 normalise = mapTerms (flip runReader mempty . eval)
 
 strictTerm :: ZTerm -> ZTerm
@@ -41,6 +41,8 @@ strictTerm = strict . normalise
   strict other = other
 
 criticalPair :: ZTerm -> Maybe CriticalPair
+criticalPair = error "Evaluation.criticalPair"
+{-
 criticalPair term 
   | valid = Just cpair
   | otherwise = Nothing
@@ -64,7 +66,7 @@ criticalPair term
     critical cse_term
   critical term = 
     return term
-  
+  -}
 {-
 criticalP :: ZTerm -> WriterT CriticalPath Eval ZTerm 
 criticalP term
