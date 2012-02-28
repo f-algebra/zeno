@@ -19,15 +19,20 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Evaluation as Eval
 import qualified Data.Map as Map
 
+type DeforestStep d = 
+  Deforestable d => d -> (d -> Effects d ZTerm) -> Effects d ZTerm
+
 class ( WithinTraversable ZTerm d
       , TermTraversable d ZVar
       , Monad (Effects d) ) => Deforestable d where
   type Effects d :: * -> *
   
-  start :: d -> (d -> Effects d ZTerm) -> Effects d ZTerm
-  apply :: [d] -> d -> (d -> Effects d ZTerm) -> Effects d ZTerm
-  generalise :: ZTerm -> ZVar -> d -> (d -> Effects d ZTerm) -> Effects d ZTerm
+  start :: DeforestStep d
+  apply :: [d] -> DeforestStep d
+  generalise :: ZTerm -> ZVar -> DeforestStep d
   
+data DeforestEnv 
+  = DeforestEnv     { }
   
 deforest :: forall d . Deforestable d => d -> Effects d ZTerm
 deforest = flip start afterStart
@@ -37,7 +42,7 @@ deforest = flip start afterStart
     undefined
     where
     terms = termList d
-    {-
+    
     
 criticalPair :: ZTerm -> Maybe CriticalPair
 criticalPair 
@@ -55,4 +60,3 @@ criticalPair
     critical cse_term
   critical term = 
     return term
-    -}

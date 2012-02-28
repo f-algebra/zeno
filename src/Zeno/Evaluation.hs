@@ -6,7 +6,7 @@ module Zeno.Evaluation (
 import Prelude ()
 import Zeno.Prelude
 import Zeno.ReaderWriter
-import Zeno.Var ( ZVar, ZTerm, CriticalPath, CriticalPair )
+import Zeno.Var ( ZVar, ZTerm, ZEquation )
 import Zeno.Term ( TermTraversable, mapTerms )
 import Zeno.Traversing
 import Zeno.Show
@@ -19,14 +19,40 @@ import qualified Zeno.Term as Term
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-type Eval = Reader (Set ZVar)
+data EvalEnv
+  = EvalEnv     { unrolledFixes :: Set ZVar
+                , backgroundRewrites :: Map ZTerm ZTerm }
 
-fixed :: Maybe ZVar -> Eval a -> Eval a
-fixed Nothing = id
-fixed (Just var) = local (Set.insert var)
+type Eval = Reader EvalEnv
 
+unroll :: Maybe ZVar -> Eval a -> Eval a
+unroll Nothing = id
+unroll (Just var) = local $ \env ->
+  env { unrolledFixes = Set.insert var (unrolledFixes env) }
+
+isUnrolled :: ZVar -> Eval Bool
+isUnrolled var = asks (Set.member var . unrolledFixes) 
+
+tryRewrite :: ZTerm -> Eval ZTerm
+tryRewrite term = do
+  rewrites <- asks backgroundRewrites
+  return $ fromMaybe term 
+         $ Map.lookup term rewrites
+   
+evaluate :: TermTraversable t ZVar => [ZEquation] -> t -> t
+evaluate eqs = mapTerms (flip runReader startingEnv . eval)
+  where
+  startingEnv = EvalEnv mempty (Map.fromList consEqs)
+  eq_pairs = map Logic.toPair eqs
+  consEqs = mapMaybe consEq eq_pairs
+  
+  consEq (t1, t2)
+    | Var.isConstructorTerm t2 = Just (t1, t2)
+    | Var.isConstructorTerm t1 = Just (t2, t1)
+    | otherwise = Nothing
+      
 normalise :: TermTraversable t ZVar => t -> t
-normalise = mapTerms (flip runReader mempty . eval)
+normalise = evaluate []
 
 strictTerm :: ZTerm -> ZTerm
 strictTerm = strict . normalise
@@ -40,9 +66,8 @@ strictTerm = strict . normalise
   strict (Term.Cse _ term _) = strict term
   strict other = other
 
-criticalPair :: ZTerm -> Maybe CriticalPair
-criticalPair = error "Evaluation.criticalPair"
 {-
+criticalPair :: ZTerm -> Maybe CriticalPair
 criticalPair term 
   | valid = Just cpair
   | otherwise = Nothing
@@ -67,29 +92,14 @@ criticalPair term
   critical term = 
     return term
   -}
-{-
-criticalP :: ZTerm -> WriterT CriticalPath Eval ZTerm 
-criticalP term
-  | fix_term@(Term.Fix fix_var fix_rhs) : args <- Term.flattenApp term = do
-    already_unrolled <- ask
-    if fix_var `Set.member` already_unrolled
-    then return term
-    else do
-      let unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
-      unrolled <- lift $ eval $ Term.unflattenApp (unrolled_fix : args)
-      criticalP unrolled
-  
-criticalP other = 
-  return other
--}
 
 eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
 eval (Term.Lam x t) = Term.Lam x <$> eval t
 eval (Term.Fix f t) = Term.Fix f <$> return t
 eval (Term.Cse cse_srt cse_of cse_alts) =
-  fixed (Term.caseSortFix cse_srt) $ do
-    cse_of' <- eval cse_of
+  unroll (Term.caseSortFix cse_srt) $ do
+    cse_of' <- (eval <=< tryRewrite) cse_of
     cse_alts' <- mapM evalAlt cse_alts
     if not (Var.isConstructorTerm cse_of')
     then return (Term.Cse cse_srt cse_of' cse_alts')
@@ -118,9 +128,9 @@ eval other = do
     lam_rhs' <- eval $ replaceWithin (Term.Var lam_var) arg lam_rhs
     evalApp (lam_rhs' : rest)
   evalApp app@(fix_term@(Term.Fix fix_var fix_rhs) : args) = do
-    already_unrolled <- ask
+    already_unrolled <- isUnrolled fix_var
     let did_nothing = return (Term.unflattenApp app)
-    if fix_var `Set.member` already_unrolled
+    if already_unrolled
     then did_nothing
     else do
       let unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
