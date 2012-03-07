@@ -7,7 +7,7 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
-                  ZVar, ZTermSubstitution )
+                  ZVar, ZTermSubstitution, ZEquation )
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 
@@ -19,33 +19,49 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Evaluation as Eval
 import qualified Data.Map as Map
 
-type DeforestStep d = 
-  Deforestable d => d -> (d -> Effects d ZTerm) -> Effects d ZTerm
+type Deforest d =
+  Deforestable d => ReaderT (Env d) (Effects d) ZTerm
 
 class ( WithinTraversable ZTerm d
       , TermTraversable d ZVar
       , Monad (Effects d) ) => Deforestable d where
   type Effects d :: * -> *
   
-  start :: DeforestStep d
-  apply :: [d] -> DeforestStep d
-  generalise :: ZTerm -> ZVar -> DeforestStep d
+  start :: Deforest d
+  apply :: Deforest d
+  generalise :: (ZTerm, ZVar) -> Deforest d
   
-data DeforestEnv 
-  = DeforestEnv     { }
+data Env d
+  = Env       { goal :: d 
+              , original :: d
+              , inducts :: [d]
+              , facts :: [ZEquation]
+              , nextStep :: Deforest d }
+              
+changeGoal :: d -> Deforest d -> Deforest d
+changeGoal d = local $ \e -> e { deforestee = d } 
   
 deforest :: forall d . Deforestable d => d -> Effects d ZTerm
-deforest = flip start afterStart
+deforest goal = runReaderT start env
   where
-  afterStart :: d -> Effects d ZTerm
-  afterStart d = do
-    undefined
-    where
-    terms = termList d
+  env = Env { goal = goal
+            , original = goal
+            , inducts = [] 
+            , facts = []
+            , nextStep = afterStart }
+  
+afterStart :: Deforest d
+afterStart = do
+  term <- asks (head . termList . goal)
+  
+  
+  
+  where
+  terms = termList d
     
     
 criticalPair :: ZTerm -> Maybe CriticalPair
-criticalPair 
+criticalPair = runWriter . critical
   where
   critical :: ZTerm -> Writer CriticalPath ZTerm
   critical (Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
