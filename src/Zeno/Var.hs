@@ -1,11 +1,10 @@
 -- |Here we have the representation of variables inside Zeno; see 'ZVarClass' for the
 -- different types of variable we can have.
 module Zeno.Var (
-  ZVar (name, sort), ZVarSort (..), HasSources (..),
+  ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
   ZClause, ZTermSubstitution, ZEquation,
-  CriticalPath, CriticalPair, 
-  substituteTakingSources,
+  CriticalPath, CriticalPair,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
@@ -13,8 +12,7 @@ module Zeno.Var (
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
   caseSplit, withinContext,
-  destructible, isHNF,
-  makeUniversal, makeBound
+  destructible, isHNF
 ) where
 
 import Prelude ()
@@ -56,16 +54,15 @@ instance Ord ZVar where
   compare = compare `on` name
   
 type CriticalPath = [Name]
-type CriticalPair = (ZTerm -> ZTerm, CriticalPath)
+type CriticalPair = (ZTerm, CriticalPath)
 
 -- |The different /sorts/ of variable within Zeno.
 data ZVarSort
-  = Universal     { sources :: !(Set CriticalPath) }
-  | Constructor
-  | Bound
+  = Constructor
+  | Universal
   
 instance Empty ZVar where
-  empty = Var empty empty Bound
+  empty = Var empty empty Universal
 
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType
@@ -89,25 +86,6 @@ isHNF term = Term.isVar term
 isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True
 isUniversal _ = False
-
-makeUniversal :: WithinTraversable ZTerm t => [ZVar] -> t -> t
-makeUniversal vars = substitute sub
-  where 
-  uni x = 
-    assert (not $ isConstructor x)
-    $ x { sort = Universal mempty }
-  sub = Map.fromList 
-      $ map (Term.Var *** Term.Var) 
-      $ vars `zip` map uni vars
-
-makeBound :: WithinTraversable ZTerm t => [ZVar] -> t -> t
-makeBound vars = substitute sub
-  where 
-  bnd x = assert (not $ isConstructor x)
-        $ x { sort = Bound}
-  sub = Map.fromList 
-      $ map (Term.Var *** Term.Var) 
-      $ vars `zip` map bnd vars
   
 freeZVars :: (HasVariables a, Var a ~ ZVar) => a -> Set ZVar
 freeZVars = Set.filter (not . isConstructor) . freeVars
@@ -131,7 +109,7 @@ instantiateTerm :: (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
 instantiateTerm term
   | Type.isVar (typeOf term) = return term
 instantiateTerm term = do
-  new_arg <- invent arg_type (Universal mempty)
+  new_arg <- invent arg_type Universal
   instantiateTerm (Term.App term (Term.Var new_arg))
   where
   Type.Fun arg_type _ = typeOf term
@@ -195,38 +173,6 @@ foldUniversal f = foldWithin foldVars
   where
   foldVars (Term.Var x) = f x
   foldVars _ = mempty
-
-class HasSources a where
-  allSources :: a -> Set CriticalPath
-  addSources :: Set CriticalPath -> a -> a
-  clearSources :: a -> a
   
-instance HasSources ZVar where
-  allSources (sort -> Universal srs) = srs
-  allSources _ = mempty
-
-  addSources more var@(sort -> Universal existing) =
-    var { sort = Universal (more ++ existing) }
-  addSources _ var = var
-  
-  clearSources var@(sort -> Universal _) =
-    var { sort = Universal mempty }
-  clearSources var = var
-  
-instance HasSources ZTerm where
-  allSources = foldUniversal allSources
-  addSources srs = mapUniversal (addSources srs)
-  clearSources = mapUniversal clearSources
-  
-substituteTakingSources :: (Ord a, WithinTraversable a f, HasSources a) => 
-    Substitution a a -> f -> f
-{-# SPECIALISE substituteTakingSources :: 
-      ZTermSubstitution -> ZTerm -> ZTerm #-}
-{-# SPECIALISE substituteTakingSources :: 
-      ZTermSubstitution -> ZClause -> ZClause #-}
-substituteTakingSources sub = mapWithin $ \from ->
-  case Map.lookup from sub of
-    Nothing -> from
-    Just to -> addSources (allSources from) to
     
     

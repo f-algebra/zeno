@@ -19,6 +19,7 @@ module Zeno.Prelude
   module Data.Either,
   module Data.Monoid,
   module Data.Map,
+  module Data.Sequence,
   module Data.Set,
   module Data.Traversable,
   module Data.Foldable,
@@ -69,6 +70,7 @@ import Data.Maybe
 import Data.Either ( lefts, rights, partitionEithers )
 import Data.Monoid
 import Data.Map ( Map )
+import Data.Sequence ( Seq )
 import Data.Set ( Set )
 import qualified Data.Set as Set
 import Data.IntSet ( IntSet )

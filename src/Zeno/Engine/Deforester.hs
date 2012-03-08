@@ -7,68 +7,74 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
-                  ZVar, ZTermSubstitution, ZEquation )
+                  ZVar, ZTermSubstitution, ZEquation,
+                  CriticalPath, CriticalPair )
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
+import Zeno.Utils ( orderedSupersetOf )
+import Zeno.Evaluation ( evaluate )
 
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
-import qualified Zeno.Evaluation as Eval
 import qualified Data.Map as Map
 
-type Deforest d =
-  Deforestable d => ReaderT (Env d) (Effects d) ZTerm
+type Deforest d m = ReaderT (Env d m) m
 
 class ( WithinTraversable ZTerm d
       , TermTraversable d ZVar
-      , Monad (Effects d) ) => Deforestable d where
-  type Effects d :: * -> *
+      , Monad m ) => Deforestable d m | d -> m where
+      
+  start :: Deforest d m ZTerm
+  apply :: Deforest d m ZTerm
+  generalise :: (ZTerm, ZVar) -> Deforest d m ZTerm
   
-  start :: Deforest d
-  apply :: Deforest d
-  generalise :: (ZTerm, ZVar) -> Deforest d
   
-data Env d
-  = Env       { goal :: d 
-              , original :: d
-              , inducts :: [d]
-              , facts :: [ZEquation]
-              , nextStep :: Deforest d }
+data Env d m
+  = Env       { goal :: !d 
+              , original :: !d
+              , inducts :: ![d]
+              , facts :: ![ZEquation]
+              , usedPaths :: !(Set CriticalPath)
+              , nextStep :: !(Deforest d m ZTerm) }
               
-changeGoal :: d -> Deforest d -> Deforest d
-changeGoal d = local $ \e -> e { deforestee = d } 
+changeGoal :: Deforestable d m => d -> Deforest d m a -> Deforest d m a
+changeGoal d = local $ \e -> e { goal = d } 
   
-deforest :: forall d . Deforestable d => d -> Effects d ZTerm
+deforest :: Deforestable d m => d -> m ZTerm
 deforest goal = runReaderT start env
   where
   env = Env { goal = goal
             , original = goal
-            , inducts = [] 
-            , facts = []
+            , inducts = mempty
+            , facts = mempty
+            , usedPaths = mempty
             , nextStep = afterStart }
+            
   
-afterStart :: Deforest d
+afterStart :: Deforestable d m => Deforest d m ZTerm
 afterStart = do
   term <- asks (head . termList . goal)
+  undefined
   
-  
-  
-  where
-  terms = termList d
     
-    
-criticalPair :: ZTerm -> Maybe CriticalPair
-criticalPair = runWriter . critical
+criticalPair :: forall d m .
+  Deforestable d m => ZTerm -> Deforest d m (Either CriticalPair ZTerm)
+criticalPair term = do
+  paths <- asks usedPaths
+  cpair@(cterm, cpath) <- lift $ runWriterT (critical term)
+  guard (all (not . flip orderedSupersetOf cpath) paths)
+  return cpair
   where
-  critical :: ZTerm -> Writer CriticalPath ZTerm
-  critical (Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
-    critical unrolled
+  critical :: [ZEquation] -> Set CriticalPath -> ZTerm -> Writer CriticalPath ZTerm
+  critical (Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) = do
+    bgfacts <- asks facts
+    critical $ evaluate bgfacts 
+             $ Term.unflattenApp (unrolled_fix : args)
     where
     unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
-    unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
   critical (Term.Cse Term.SplitCase cse_term _) =
     return cse_term
   critical (Term.Cse (Term.FoldCase name _) cse_term _) = do
@@ -76,3 +82,4 @@ criticalPair = runWriter . critical
     critical cse_term
   critical term = 
     return term
+

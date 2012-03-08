@@ -138,12 +138,12 @@ parseRTerm = parse >=> Term.reannotate
       zterm <- localVars named_vars (parse rterm) 
       return (Term.Alt con_var arg_vars zterm)
       where
-      boundVar name typ = Var.declare name typ Var.Bound
+      boundVar name typ = Var.declare name typ Var.Universal
 
 parseTypedRVar :: RVar -> Parser ZVar
 parseTypedRVar (RVar name (Just rtype)) = do
   ztype <- parseRType rtype
-  Var.declare name ztype Var.Bound
+  Var.declare name ztype Var.Universal
     
 localVars :: [(String, ZVar)] -> Parser a -> Parser a
 localVars = appEndo . concatMap (Endo . uncurry localTerm . second Term.Var)
