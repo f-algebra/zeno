@@ -4,7 +4,6 @@ module Zeno.Var (
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
   ZClause, ZTermSubstitution, ZEquation,
-  CriticalPath, CriticalPair,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
@@ -52,9 +51,6 @@ instance Eq ZVar where
   
 instance Ord ZVar where
   compare = compare `on` name
-  
-type CriticalPath = [Name]
-type CriticalPair = (ZTerm, CriticalPath)
 
 -- |The different /sorts/ of variable within Zeno.
 data ZVarSort
