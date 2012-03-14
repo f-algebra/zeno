@@ -7,7 +7,7 @@ module Zeno.Var (
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
-  new, declare, invent, clone,
+  new, declare, invent, clone, generalise,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
   caseSplit, withinContext,
@@ -18,7 +18,7 @@ import Prelude ()
 import Zeno.Prelude hiding ( sort )
 import Zeno.DataType ( DataType )
 import Zeno.Type ( Type, Typed (..) )
-import Zeno.Name ( Unique, Name, UniqueGen )
+import Zeno.Name ( Name, MonadUnique )
 import Zeno.Term ( Term, Alt, TermSubstitution )
 import Zeno.Logic ( Clause, Equation )
 import Zeno.Utils
@@ -86,7 +86,7 @@ isUniversal _ = False
 freeZVars :: (HasVariables a, Var a ~ ZVar) => a -> Set ZVar
 freeZVars = Set.filter (not . isConstructor) . freeVars
 
-distinguishFixes :: forall g m . (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
+distinguishFixes :: forall m . MonadUnique m => ZTerm -> m ZTerm
 distinguishFixes = mapWithinM distinguish
   where
   distinguish :: ZTerm -> m ZTerm
@@ -101,7 +101,7 @@ distinguishFixes = mapWithinM distinguish
   distinguish other = 
     return other
     
-instantiateTerm :: (MonadState g m, UniqueGen g) => ZTerm -> m ZTerm
+instantiateTerm :: MonadUnique m => ZTerm -> m ZTerm
 instantiateTerm term
   | Type.isVar (typeOf term) = return term
 instantiateTerm term = do
@@ -110,9 +110,8 @@ instantiateTerm term = do
   where
   Type.Fun arg_type _ = typeOf term
   
-caseSplit :: (MonadState g m, UniqueGen g) => ZDataType -> m [ZTerm]
-caseSplit = 
-  mapM (instantiateTerm . Term.Var) . DataType.constructors
+caseSplit :: MonadUnique m => ZDataType -> m [ZTerm]
+caseSplit = mapM (instantiateTerm . Term.Var) . DataType.constructors
   
 destructible :: ZTerm -> Bool
 destructible term = 
@@ -139,20 +138,21 @@ recursiveArguments term
   typ = typeOf term
   args = tail (Term.flattenApp term)
 
-new :: (MonadState g m, UniqueGen g) => 
-  Maybe String -> ZType -> ZVarSort -> m ZVar
+generalise :: MonadUnique m => ZTerm -> m ZVar
+generalise term = new Nothing (typeOf term) Universal
+  
+new :: MonadUnique m => Maybe String -> ZType -> ZVarSort -> m ZVar
 new label typ srt = do
   name <- Name.new label
   return (Var name typ srt)
   
-declare :: (MonadState g m, UniqueGen g) => 
-  String -> ZType -> ZVarSort -> m ZVar
+declare :: MonadUnique m => String -> ZType -> ZVarSort -> m ZVar
 declare = new . Just  
   
-invent :: (MonadState g m, UniqueGen g) => ZType -> ZVarSort -> m ZVar
+invent :: MonadUnique m => ZType -> ZVarSort -> m ZVar
 invent = new Nothing
 
-clone :: (MonadState g m, UniqueGen g) => ZVar -> m ZVar
+clone :: MonadUnique m => ZVar -> m ZVar
 clone var = declare (show (name var)) (varType var) (sort var)
 
 universalVariables :: Foldable f => f ZVar -> Set ZVar

@@ -11,7 +11,8 @@ module Zeno.Term (
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Name ( Name, UniqueGen )
+import Zeno.Name ( Name )
+import Zeno.Unique ( MonadUnique )
 import Zeno.Traversing
 import Zeno.Utils
 import Zeno.Type ( Type, Typed (..) )
@@ -81,7 +82,15 @@ instance TermTraversable (Term a) a where
   mapTermsM = ($)
   mapTerms = ($)
   termList = pure
-
+  
+instance TermTraversable (Alt a) a where
+  mapTermsM f (Alt con vars term) =
+    Alt con vars `liftM` f term
+  mapTerms f (Alt con vars term) =
+    Alt con vars (f term)
+  termList =
+    return . altTerm
+ 
 isVar :: Term a -> Bool
 isVar (Var {}) = True
 isVar _ = False
@@ -113,8 +122,7 @@ caseSortFix :: CaseSort a -> Maybe a
 caseSortFix (FoldCase _ fix) = Just fix
 caseSortFix _ = Nothing
 
-freshenCaseSort :: 
-    (MonadState g m, UniqueGen g) => CaseSort a -> m (CaseSort a)
+freshenCaseSort :: MonadUnique m => CaseSort a -> m (CaseSort a)
 freshenCaseSort SplitCase = return SplitCase
 freshenCaseSort (FoldCase name fix) = do
   new_name <- Name.clone name
@@ -159,8 +167,8 @@ unflattenLam = flip (foldr Lam)
 -- | Resets all the 'CaseSort' annotations within a term.
 -- Only run this on top-level terms, if you are within 'Fix'ed variables
 -- this could cause inconsistency.
-reannotate :: forall g m a t . 
-    (MonadState g m, UniqueGen g, Ord a, TermTraversable t a) => t -> m t
+reannotate :: forall m a t . 
+  (MonadUnique m, Ord a, TermTraversable t a) => t -> m t
 reannotate = mapTermsM (flip runReaderT (Nothing, mempty) . set)
   where
   set :: Term a -> ReaderT (Maybe a, Set a) m (Term a)
@@ -246,42 +254,46 @@ instance Ord a => Unifiable (Alt a) where
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
     
-instance Ord a => WithinTraversable (Term a) (Term a) where
-  mapWithinM f (App lhs rhs) =
-    f =<< return App `ap` mapWithinM f lhs `ap` mapWithinM f rhs
-  mapWithinM f (Cse srt lhs alts) =
-    f =<< return (Cse srt) `ap` mapWithinM f lhs 
-                              `ap` mapM (mapWithinM f) alts
-  mapWithinM f (Lam var rhs) =
-    f =<< return (Lam var) `ap` mapWithinM f rhs
-  mapWithinM f (Fix var rhs) =
-    f =<< return (Fix var) `ap` mapWithinM f rhs
-  mapWithinM f expr =
-    f =<< return expr
-    
-  substitute sub term = 
-    tryReplace sub (subst term)
+instance (Ord a, TermTraversable t a) => WithinTraversable (Term a) t where
+  mapWithinM f = mapTermsM mapWithinT
     where
-    subst (Lam var rhs) = 
-      Lam var (substitute sub' rhs)
-      where sub' = removeVariable var sub
-    subst (Fix var rhs) =
-      Fix var (substitute sub' rhs)
-      where sub' = removeVariable var sub
-    subst (App lhs rhs) =
-      App (substitute sub lhs) (substitute sub rhs)
-    subst (Cse srt term alts) = 
-      Cse srt (substitute sub term) (map (substitute sub) alts)
-    subst other = other
+    mapWithinT (App lhs rhs) =
+      f =<< return App `ap` mapWithinT lhs `ap` mapWithinT rhs
+    mapWithinT (Cse srt lhs alts) =
+      f =<< return (Cse srt) `ap` mapWithinT lhs 
+                                `ap` mapM mapWithinA alts
+    mapWithinT (Lam var rhs) =
+      f =<< return (Lam var) `ap` mapWithinT rhs
+    mapWithinT (Fix var rhs) =
+      f =<< return (Fix var) `ap` mapWithinT rhs
+    mapWithinT expr =
+      f =<< return expr
+      
+    mapWithinA (Alt con vars term) = 
+      Alt con vars `liftM` mapWithinT term
     
-instance Ord a => WithinTraversable (Term a) (Alt a) where
-  mapWithinM f (Alt con binds rhs) = 
-    return (Alt con binds) `ap` mapWithinM f rhs
-    
-  substitute sub (Alt con vars term) =
-    Alt con vars (substitute sub' term)
+  substitute sub = mapTerms substituteT
     where
-    sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
+    substituteT term = 
+      tryReplace sub (subst term)
+      where
+      subst (Lam var rhs) = 
+        Lam var (substituteT rhs)
+        where sub' = removeVariable var sub
+      subst (Fix var rhs) =
+        Fix var (substituteT rhs)
+        where sub' = removeVariable var sub
+      subst (App lhs rhs) =
+        App (substituteT lhs) (substituteT rhs)
+      subst (Cse srt term alts) = 
+        Cse srt (substituteT term) (map substituteA alts)
+      subst other = other
+      
+    substituteA (Alt con vars term) =
+      Alt con vars (substituteT term)
+      where
+      sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
+      
     
 instance Empty (CaseSort a) where
   empty = SplitCase

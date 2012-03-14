@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 module Zeno.Core (
   Zeno, ZenoState (..), ZenoTheory (..),
   ZProof,
@@ -10,7 +11,7 @@ import Prelude ()
 import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType,
                   ZTermSubstitution, ZVar )
-import Zeno.Name ( Unique, UniqueGen (..) )
+import Zeno.Unique ( Unique, MonadUnique )
 import Zeno.Show
 
 import qualified Zeno.Name as Name
@@ -18,6 +19,7 @@ import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
+import qualified Zeno.Unique as Unique
 
 type StringMap = Map String
 type ZProof = ()
@@ -39,12 +41,15 @@ data DiscoveredLemma
   = DiscoveredLemma   { discoveredProperty :: !ZClause,
                         discoveredProof :: !ZProof,
                         discoveredReason :: !String }
-  
 
-instance UniqueGen ZenoState where
-  takeUnique zeno = 
-    let (new_uni, new_gen) = takeUnique (uniqueGen zeno)
-    in (new_uni, zeno { uniqueGen = new_gen })
+newtype WrapUnique m a = WrapUnique { unwrapUnique :: m a }
+  deriving ( Monad )
+                        
+instance MonadState ZenoState m => MonadUnique (WrapUnique m) where
+  new = WrapUnique $ do
+    uni <- gets uniqueGen
+    modify $ \s -> s { uniqueGen = Unique.next (uniqueGen s) }
+    return uni 
    
 instance Empty ZenoTheory where
   empty = ZenoTheory  { terms = mempty,
@@ -72,12 +77,12 @@ defineProp :: MonadState ZenoState m => String -> ZClause -> m ()
 defineProp name cls = modifyTheory $ \z -> z
   { props = Map.insert name cls (props z) }
   
-lookupTerm :: (Functor m, MonadState ZenoState m) => String -> m (Maybe ZTerm)
+lookupTerm :: MonadState ZenoState m => String -> m (Maybe ZTerm)
 lookupTerm name = do
   maybe_term <- gets (Map.lookup name . terms . theory)
   case maybe_term of
     Nothing -> return Nothing
-    Just term -> Just <$> Var.distinguishFixes term
+    Just term -> Just `liftM` unwrapUnique (Var.distinguishFixes term)
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
 lookupType name = gets (Map.lookup name . types . theory)
