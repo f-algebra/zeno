@@ -31,7 +31,7 @@ maxDepth = 6
 run :: (MonadState ZenoState m, MonadPlus m) => ZClause -> m ZCounterExample
 run cls = do
   state <- get
-  cls' <- Term.reannotate cls
+  cls' <- unwrapFunctor $ Term.reannotate cls
   let (mby_cex, state') = runState (check maxDepth [] cls') state
   case mby_cex of
     Nothing -> mzero
@@ -47,7 +47,8 @@ firstM f (a:as) = do
       
 explore :: forall m . MonadState ZenoState m => ZTerm -> m [ZTerm]
 explore term = do
-  explored <- expl maxDepth =<< Term.reannotate term
+  term' <- unwrapFunctor (Term.reannotate term)
+  explored <- expl maxDepth term'
   return $ nubOrd $ checkCount explored
   where
   checkCount ts = assert (length ts >= maxDepth) ts
@@ -57,7 +58,7 @@ explore term = do
     | depth > 0
     , Term.isVar st_term
     , Var.destructible st_term = do
-        cons <- Var.caseSplit st_dtype
+        cons <- unwrapFunctor $ Var.caseSplit st_dtype
         concatMapM explCon cons
     where
     st_term = Eval.strictTerm term

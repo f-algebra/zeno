@@ -29,8 +29,8 @@ type CriticalPath = [Name]
 class ( Ord d
       , WithinTraversable ZTerm d
       , TermTraversable d ZVar
-      , MonadUnique m ) => Deforestable d m | d -> m where
-  induct :: DeforestT d m ZTerm
+      , MonadUnique m ) => Deforestable d m where
+  start :: DeforestT d m ZTerm
   generalise :: (ZTerm, ZVar) -> DeforestT d m ZTerm
   
 data Induct d 
@@ -48,15 +48,21 @@ instance TermTraversable d ZVar => TermTraversable (Env d m) ZVar where
   mapTermsM f env = do
     goal' <- mapTermsM f (goal env)
     inducts' <- mapM (mapTermsM f) (inducts env)
+    facts' <- mapM (mapTermsM f) (facts env)
     return 
-      $ env { goal = goal', inducts = inducts' }
+      $ env { goal = goal'
+            , inducts = inducts'
+            , facts = facts' }
 
   mapTerms f env =
     env { goal = mapTerms f (goal env)
-        , inducts = map (mapTerms f) (inducts env) }
+        , inducts = map (mapTerms f) (inducts env)
+        , facts = map (mapTerms f) (facts env) }
         
   termList env = 
-    termList (goal env) ++ concatMap termList (inducts env)
+    termList (goal env)
+    ++ concatMap termList (inducts env)
+    ++ concatMap termList (facts env)
               
 instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
   mapTermsM f (Induct goal vars) =
@@ -65,11 +71,22 @@ instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
     Induct (mapTerms f goal) vars
   termList = termList . inductGoal
               
+normaliseEnv :: Deforestable d m => DeforestT d m a -> DeforestT d m a
+normaliseEnv = local $ \e -> evaluate (facts e) e
+  
 setGoal :: Deforestable d m => d -> DeforestT d m a -> DeforestT d m a
 setGoal d = local $ \e -> e { goal = d } 
   
 addFact :: Deforestable d m => ZEquation -> DeforestT d m a -> DeforestT d m a
 addFact fact = local $ \e -> e { facts = fact:(facts e) }
+
+addPath :: Deforestable d m => 
+  CriticalPath -> DeforestT d m a -> DeforestT d m a
+addPath path = local $ \e -> e { usedPaths = Set.insert path (usedPaths e) }
+
+addInducts :: Deforestable d m => 
+  [Induct d] -> DeforestT d m a -> DeforestT d m a
+addInducts inds = local $ \e -> e { inducts = (inducts e) ++ inds }
 
 setNextStep :: Deforestable d m => 
   DeforestT d m ZTerm -> DeforestT d m a -> DeforestT d m a
@@ -87,7 +104,7 @@ deforest goal = runReaderT startUnfolding env
 startUnfolding :: Deforestable d m => DeforestT d m ZTerm
 startUnfolding = setInduct 
                $ setNextStep doCriticalStep
-               $ induct
+               $ start
   where
   setInduct = local $ \e -> e { inducts = [Induct (goal e) mempty] }
 
@@ -115,14 +132,40 @@ doCriticalStep = do
         $ generalise (term, new_var)
         
     InductStep var path -> do
-      continue here!
+      let dtype = Type.fromVar (typeOf var)
+      cons <- Var.caseSplit dtype
+      branches <- addPath path 
+        $ mapM (doInduct var) cons
+      return $ Term.Cse Term.SplitCase (Term.Var var) branches
   where
   doSplit :: ZTerm -> ZTerm -> DeforestT d m ZAlt
-  doSplit term con_term = 
-    addFact (Logic.Equal term con_term) $ do
-      Term.Alt con vars `liftM` doCriticalStep
+  doSplit term con_term = id
+    $ addFact (Logic.Equal term con_term) 
+    $ normaliseEnv
+    $ Term.Alt con vars `liftM` doCriticalStep
     where
     (con:vars) = map Term.fromVar (Term.flattenApp con_term)
+    
+  doInduct :: ZVar -> ZTerm -> DeforestT d m ZAlt
+  doInduct var con_term = do
+    new_inds <- concatMapM generateInducts rec_vars
+    addInducts new_inds 
+      $ local (substitute ind_sub) 
+      $ normaliseEnv
+      $ Term.Alt con vars `liftM` doCriticalStep
+    where
+    (con:vars) = map Term.fromVar (Term.flattenApp con_term)
+    rec_vars = filter ((== (typeOf var)) . typeOf) vars
+    ind_sub = Map.singleton (Term.Var var) con_term
+      
+    generateInducts :: ZVar -> DeforestT d m [Induct d]
+    generateInducts rec_var = asks (map genInd . inducts)
+      where
+      rec_sub = Map.singleton (Term.Var var) (Term.Var rec_var)
+      
+      genInd :: Induct d -> Induct d
+      genInd (Induct goal vars) = 
+        Induct (substitute rec_sub goal) (Map.insert var rec_var vars)
     
 criticalStep :: Deforestable d m => ZTerm -> DeforestT d m CriticalStep
 criticalStep orig_term@(Term.flattenApp -> 

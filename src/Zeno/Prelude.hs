@@ -39,7 +39,8 @@ module Zeno.Prelude
   concatMap, concatMapM, partitionM,
   fromJustT, anyM, allM, findM, sortWith,
   minimalBy, nubOrd, elemOrd, intersectOrd,
-  fromRight, fromLeft, traceMe, setAt
+  fromRight, fromLeft, traceMe, setAt,
+  wrapFunctor, unwrapFunctor, FunctorWrapper
 )
 where
 
@@ -178,3 +179,10 @@ setAt :: Int -> a -> [a] -> [a]
 setAt _ x [] = [x]
 setAt 0 x xs = x:(tail xs)
 setAt i x (y:ys) = y:(setAt (i - 1) x ys)
+
+wrapFunctor :: f a -> FunctorWrapper f a
+wrapFunctor = WrapFunctor
+
+newtype FunctorWrapper f a = WrapFunctor { unwrapFunctor :: f a }
+  deriving ( Functor, Foldable, Traversable, Monad, Applicative )
+  

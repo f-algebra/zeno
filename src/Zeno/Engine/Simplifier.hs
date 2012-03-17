@@ -1,5 +1,4 @@
 module Zeno.Engine.Simplifier (
-  run
 ) where
 
 import Prelude ()
@@ -8,10 +7,11 @@ import Zeno.Utils ( replace )
 import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Core ( ZenoState )
-import Zeno.Evaluation ( normalise )
 import Zeno.Var ( ZTerm, ZVar, ZAlt, ZEquation, ZClause ) 
 import Zeno.Type ( typeOf )
+import Zeno.Name ( MonadUnique )
 import Zeno.Show
+import Zeno.Engine.Deforester ( Deforestable (..) )
 
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
@@ -19,23 +19,16 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Type as Type
-import qualified Zeno.Engine.Inventor as Inventor
-import qualified Zeno.Engine.Checker as Checker
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-import qualified Data.Monoid as Monoid
 
-run :: (MonadState ZenoState m, MonadPlus m) => ZTerm -> m (ZTerm, [ZClause])
-run term = do
-  state <- get
-  let (term', state', (_, prove_these)) = runRWS (simplify term) mempty state
-  if null prove_these
-  then mzero
-  else do
-    put state'
-    return (term', prove_these)
+instance MonadUnique m 
+      => Deforestable ZTerm (WriterT (Any, [ZClause]) m) where
+  start = undefined
+  generalise = undefined
 
+{-
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt
 freshenAltVars (Term.Alt con vars term) = do
   new_vars <- mapM Var.clone vars
@@ -305,4 +298,4 @@ deforest app@(Term.App fun arg) = do
 
 deforest other = 
   return other
-  
+  -}

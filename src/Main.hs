@@ -8,9 +8,8 @@ import Zeno.Var ( ZTerm )
 import Zeno.Show
 import Zeno.Evaluation ( normalise )
 import Zeno.Engine.Deforester
+import Zeno.Engine.Simplifier
 
-import qualified Zeno.Engine.Simplifier as Simplifier
-import qualified Zeno.Engine.Inventor as Inventor
 import qualified Zeno.Engine.Checker as Checker
 
 import qualified Zeno.Term as Term
@@ -56,11 +55,12 @@ command ("explore", arg) = do
     Just (Checker.Constant kterm) -> 
       Zeno.print $ "Guessed constant term: " ++ show kterm
     Just (Checker.Context cxt typ) -> do
-      cxt_filler <- Term.Var <$> Var.declare ("{" ++ show typ ++ "}") typ Var.Bound
-      Zeno.print $ "Guessed context: " ++ show (cxt cxt_filler)
+      cxt_filler <- Var.declare ("{" ++ show typ ++ "}") typ Var.Universal
+      Zeno.print $ "Guessed context: " ++ show (cxt (Term.Var cxt_filler))
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))
+{-
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
   term' <- runMaybeT (Simplifier.run term)
@@ -85,6 +85,7 @@ command ("check", arg) = do
     case mby_cex of
       Nothing -> "Could not find counter-example."
       Just cex -> showSubstitution cex
+-}
 command (other, _) = 
   return () 
   -- error $ "Command \"" ++ other ++ "\" not recognized."

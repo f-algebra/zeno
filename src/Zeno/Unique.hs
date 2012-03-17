@@ -7,7 +7,7 @@ import Zeno.Prelude
 
 newtype Unique = Unique { run :: Int }
   deriving ( Eq, Ord )
-  
+
 next :: Unique -> Unique
 next = Unique . (+ 1) . run
 
@@ -28,4 +28,7 @@ instance Monoid Unique where
   mappend (Unique i) (Unique j) = Unique (max i j)
   
 instance MonadUnique m => MonadUnique (ReaderT r m) where
+  new = lift new
+  
+instance (MonadUnique m, Monoid w) => MonadUnique (WriterT w m) where
   new = lift new

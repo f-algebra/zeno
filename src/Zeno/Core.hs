@@ -41,12 +41,12 @@ data DiscoveredLemma
   = DiscoveredLemma   { discoveredProperty :: !ZClause,
                         discoveredProof :: !ZProof,
                         discoveredReason :: !String }
-
-newtype WrapUnique m a = WrapUnique { unwrapUnique :: m a }
-  deriving ( Monad )
                         
-instance MonadState ZenoState m => MonadUnique (WrapUnique m) where
-  new = WrapUnique $ do
+instance MonadUnique (State ZenoState) where
+  new = unwrapFunctor Unique.new
+      
+instance MonadState ZenoState m => MonadUnique (FunctorWrapper m) where
+  new = wrapFunctor $ do
     uni <- gets uniqueGen
     modify $ \s -> s { uniqueGen = Unique.next (uniqueGen s) }
     return uni 
@@ -82,7 +82,7 @@ lookupTerm name = do
   maybe_term <- gets (Map.lookup name . terms . theory)
   case maybe_term of
     Nothing -> return Nothing
-    Just term -> Just `liftM` unwrapUnique (Var.distinguishFixes term)
+    Just term -> Just `liftM` unwrapFunctor (Var.distinguishFixes term)
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
 lookupType name = gets (Map.lookup name . types . theory)
