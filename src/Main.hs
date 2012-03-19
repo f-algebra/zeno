@@ -7,9 +7,8 @@ import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Var ( ZTerm )
 import Zeno.Show
 import Zeno.Evaluation ( normalise )
-import Zeno.Engine.Deforester
-import Zeno.Engine.Simplifier
 
+import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Checker as Checker
 
 import qualified Zeno.Term as Term
@@ -60,10 +59,11 @@ command ("explore", arg) = do
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   Zeno.print (show (normalise term))
-{-
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
-  term' <- runMaybeT (Simplifier.run term)
+  term' <- Simplifier.run term
+  Zeno.print (show term')
+{-
   Zeno.print $
     case term' of
       Nothing -> show term ++ "\ncould not be simplified."
@@ -71,6 +71,8 @@ command ("simplify", arg) = do
         show term ++ "\n\nsimplifies to:\n\n" ++ showWithDefinitions term'
         ++ "\n\nusing the following properties:\n\n" 
         ++ (intercalate "\n\n" . map showWithDefinitions) prove_me
+-}
+{-
 command ("invent", arg) = do
   (func, args, res) <- ZML.readSpec arg
   mby_def <- undefined -- (Inventor.run ...)

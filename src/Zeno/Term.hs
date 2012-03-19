@@ -261,7 +261,7 @@ instance (Ord a, TermTraversable t a) => WithinTraversable (Term a) t where
       f =<< return App `ap` mapWithinT lhs `ap` mapWithinT rhs
     mapWithinT (Cse srt lhs alts) =
       f =<< return (Cse srt) `ap` mapWithinT lhs 
-                                `ap` mapM mapWithinA alts
+                             `ap` mapM mapWithinA alts
     mapWithinT (Lam var rhs) =
       f =<< return (Lam var) `ap` mapWithinT rhs
     mapWithinT (Fix var rhs) =

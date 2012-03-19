@@ -1,4 +1,5 @@
 module Zeno.Engine.Simplifier (
+  run
 ) where
 
 import Prelude ()
@@ -9,9 +10,10 @@ import Zeno.Unification
 import Zeno.Core ( ZenoState )
 import Zeno.Var ( ZTerm, ZVar, ZAlt, ZEquation, ZClause ) 
 import Zeno.Type ( typeOf )
+import Zeno.Term ( TermTraversable (..) )
 import Zeno.Name ( MonadUnique )
 import Zeno.Show
-import Zeno.Engine.Deforester ( Deforestable (..) )
+import Zeno.Engine.Deforester ( Deforestable, DeforestT, Induct )
 
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
@@ -19,15 +21,78 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Term as Term
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Type as Type
+import qualified Zeno.Engine.Deforester as Deforest
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-instance MonadUnique m 
-      => Deforestable ZTerm (WriterT (Any, [ZClause]) m) where
-  start = undefined
-  generalise = undefined
+run :: (MonadUnique m) => ZTerm -> m ZTerm
+run term = do
+  result :: Either SimplifyErr (ZTerm, [ZClause]) 
+    <- (runErrorT . runWriterT . Deforest.deforest) startingGoal
+  case result of
+    Left err -> undefined
+    Right (term', to_prove) -> return term'
+  where
+  startingGoal = SimplifyGoal term err
+  err = error "Tried to access SimplifyGoal.replaceWithMe before it was set"
 
+type SimplifyErr = String
+
+-- | Outputs a list of intermediary lemmas to be proven
+-- in order for this simplification to be sound
+type SimplifyT m = WriterT [ZClause] (ErrorT SimplifyErr m)
+
+data SimplifyGoal
+  = SimplifyGoal    { simplifyMe :: !ZTerm
+                    , replaceWithMe :: ZTerm }
+  deriving ( Eq, Ord )
+
+instance TermTraversable SimplifyGoal ZVar where
+  mapTermsM f (SimplifyGoal simp repl) = 
+    return SimplifyGoal `ap` f simp `ap` f repl
+    
+  mapTerms f (SimplifyGoal simp repl) = 
+    SimplifyGoal (f simp) (f repl)
+    
+  -- | While replaceWithMe can be modified it should not be accessed
+  termList = 
+    return . simplifyMe
+                    
+modifyGoal :: MonadUnique m => (SimplifyGoal -> SimplifyGoal) 
+  -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
+modifyGoal f = local $ \e -> e { Deforest.goal = f (Deforest.goal e) }
+
+setReplaceWith :: MonadUnique m => ZTerm 
+  -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
+setReplaceWith term = modifyGoal $ \g -> g { replaceWithMe = term }
+                    
+instance MonadUnique m 
+      => Deforestable SimplifyGoal (SimplifyT m) where
+      
+  start = do
+    goal <- asks (simplifyMe . Deforest.goal)
+    let free_vars = (Set.toList . Var.freeZVars) goal
+        var_types = map typeOf free_vars
+        fun_type = Type.unflatten (var_types ++ [typeOf goal])
+    new_fun <- Var.invent fun_type Var.Universal
+    let new_term = Term.unflattenApp 
+                 $ map Term.Var (new_fun : free_vars) 
+    inner_term <- setReplaceWith new_term Deforest.continue
+    return 
+      $ Term.Fix new_fun
+      $ Term.unflattenLam free_vars inner_term
+      
+  generalise _ = do
+    goal <- asks (simplifyMe . Deforest.goal)
+    inds <- Deforest.usableInducts
+    let apply = appEndo . concatMap (Endo . applyInduct) $ inds
+    return (apply goal)
+    where
+    applyInduct :: Induct SimplifyGoal -> ZTerm -> ZTerm
+    applyInduct (Deforest.inductGoal -> SimplifyGoal simp repl) = 
+      substitute (Map.singleton simp repl)
+    
 {-
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt
 freshenAltVars (Term.Alt con vars term) = do

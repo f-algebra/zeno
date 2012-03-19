@@ -50,7 +50,7 @@ import Prelude hiding ( mapM, foldl, foldl1, mapM_, minimum, maximum, sequence_,
 
 import Control.Arrow ( (>>>), (<<<), (&&&), (***), first, second )
 import Control.Applicative hiding ( empty )
-import Control.Monad ( liftM, ap, replicateM, 
+import Control.Monad ( liftM, ap, replicateM, join,
   zipWithM, filterM, when, unless, guard, (>=>), (<=<), MonadPlus (..) )
 import Control.Monad.Trans ( MonadTrans (..), lift, liftIO )
 import Control.Monad.State ( evalStateT, execState, runState, evalState,
@@ -185,4 +185,4 @@ wrapFunctor = WrapFunctor
 
 newtype FunctorWrapper f a = WrapFunctor { unwrapFunctor :: f a }
   deriving ( Functor, Foldable, Traversable, Monad, Applicative )
-  
+

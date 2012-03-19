@@ -1,5 +1,7 @@
 module Zeno.Engine.Deforester (
-  Deforestable (..)
+  Deforestable (..), Induct (..), DeforestT,
+  deforest, goal, inducts, facts, continue,
+  usableInducts
 ) where
 
 import Prelude ()
@@ -33,12 +35,22 @@ class ( Ord d
   start :: DeforestT d m ZTerm
   generalise :: (ZTerm, ZVar) -> DeforestT d m ZTerm
   
+deforest :: Deforestable d m => d -> m ZTerm
+deforest goal = runReaderT startUnfolding env
+  where
+  env = Env { goal = goal
+            , inducts = mempty
+            , facts = mempty
+            , usedPaths = mempty
+            , nextStep = return err }
+  err = error "Tried to access Env.nextStep before it was defined"
+  
 data Induct d 
   = Induct    { inductGoal :: !d
               , inductVars :: !(Map ZVar ZVar) }
   
 data Env d m
-  = Env       { goal :: !d 
+  = Env       { goal :: !d
               , inducts :: ![Induct d]
               , facts :: ![ZEquation]
               , usedPaths :: !(Set CriticalPath)
@@ -92,15 +104,12 @@ setNextStep :: Deforestable d m =>
   DeforestT d m ZTerm -> DeforestT d m a -> DeforestT d m a
 setNextStep step = local $ \e -> e { nextStep = step }
 
-deforest :: Deforestable d m => d -> m ZTerm
-deforest goal = runReaderT startUnfolding env
-  where
-  env = Env { goal = goal
-            , inducts = mempty
-            , facts = mempty
-            , usedPaths = mempty
-            , nextStep = return undefined }
-  
+usableInducts :: Deforestable d m => DeforestT d m [Induct d]
+usableInducts = asks (filter (not . Map.null . inductVars) . inducts)
+
+continue :: Deforestable d m => DeforestT d m ZTerm
+continue = join (asks nextStep)
+
 startUnfolding :: Deforestable d m => DeforestT d m ZTerm
 startUnfolding = setInduct 
                $ setNextStep doCriticalStep
@@ -201,6 +210,7 @@ criticalStep (Term.Cse (Term.FoldCase name _) cse_term _) =
 criticalStep (Term.Var var)
   | Type.isVar (typeOf var) =
       return (InductStep var mempty)
-  | otherwise = 
-      error "TODO: Handle when critical var is of function type."
+
+criticalStep other =
+  error $ "Did criticalStep of " ++ show other
 

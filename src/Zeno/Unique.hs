@@ -32,3 +32,9 @@ instance MonadUnique m => MonadUnique (ReaderT r m) where
   
 instance (MonadUnique m, Monoid w) => MonadUnique (WriterT w m) where
   new = lift new
+  
+instance (MonadUnique m, Monoid w) => MonadUnique (RWST r w s m) where
+  new = lift new
+  
+instance (Error e, MonadUnique m) => MonadUnique (ErrorT e m) where
+  new = lift new
