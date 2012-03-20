@@ -39,12 +39,6 @@ run cls = do
       put state'
       return cex
       
-firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
-firstM _ [] = return Nothing
-firstM f (a:as) = do
-  mby_b <- f a
-  maybe (firstM f as) (return . Just) mby_b
-      
 explore :: forall m . MonadState ZenoState m => ZTerm -> m [ZTerm]
 explore term = do
   term' <- unwrapFunctor (Term.reannotate term)

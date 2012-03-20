@@ -120,6 +120,10 @@ showTerm (Term.Cse srt lhs alts) = indent $ do
             | otherwise = "?"
   return $ i ++ srt_s ++ "case " ++ lhs'' ++ " of" ++ alts'
   
+instance Show a => Show (Term.CaseSort a) where
+  show Term.SplitCase = "<>"
+  show (Term.FoldCase name fix) = "<" ++ show name ++ ", " ++ show fix ++ ">"
+  
 instance (Ord a, Show a) => Show (Alt a) where
   show = runShowTerm . showAlt
 

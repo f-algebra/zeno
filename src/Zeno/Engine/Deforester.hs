@@ -1,7 +1,7 @@
 module Zeno.Engine.Deforester (
   Deforestable (..), Induct (..), DeforestT,
   deforest, goal, inducts, facts, continue,
-  usableInducts
+  usableInducts, traceEnv
 ) where
 
 import Prelude ()
@@ -28,12 +28,13 @@ import qualified Data.Set as Set
 type DeforestT d m = ReaderT (Env d m) m
 type CriticalPath = [Name]
 
-class ( Ord d
+class ( Ord d, Show d
       , WithinTraversable ZTerm d
       , TermTraversable d ZVar
       , MonadUnique m ) => Deforestable d m where
   start :: DeforestT d m ZTerm
   generalise :: (ZTerm, ZVar) -> DeforestT d m ZTerm
+  finish :: DeforestT d m ZTerm
   
 deforest :: Deforestable d m => d -> m ZTerm
 deforest goal = runReaderT startUnfolding env
@@ -82,6 +83,17 @@ instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
   mapTerms f (Induct goal vars) = 
     Induct (mapTerms f goal) vars
   termList = termList . inductGoal
+  
+traceEnv :: Deforestable d m => String -> DeforestT d m a -> DeforestT d m a
+traceEnv msg cont = do
+  d <- asks goal
+  inds <- usableInducts
+  trace "" 
+    $ trace msg
+    $ trace (show d)
+    $ trace "with"
+    $ trace (intercalate "\n" $ map show inds)
+    $ cont
               
 normaliseEnv :: Deforestable d m => DeforestT d m a -> DeforestT d m a
 normaliseEnv = local $ \e -> evaluate (facts e) e
@@ -111,8 +123,7 @@ continue :: Deforestable d m => DeforestT d m ZTerm
 continue = join (asks nextStep)
 
 startUnfolding :: Deforestable d m => DeforestT d m ZTerm
-startUnfolding = setInduct 
-               $ setNextStep doCriticalStep
+startUnfolding = setNextStep (setInduct doCriticalStep) 
                $ start
   where
   setInduct = local $ \e -> e { inducts = [Induct (goal e) mempty] }
@@ -124,59 +135,65 @@ data CriticalStep
 
 doCriticalStep :: forall d m . Deforestable d m => DeforestT d m ZTerm
 doCriticalStep = do
-  term <- asks (head . termList . goal)
-  step <- criticalStep term
-  case step of
-    SplitStep term -> do 
-      let dtype = Type.fromVar (typeOf term)
-      cons <- Var.caseSplit dtype
-      branches <- mapM (doSplit term) cons
-      return $ Term.Cse Term.SplitCase term branches
-      
-    Generalise term -> do
-      new_var <- Var.generalise term
-      let gensub = Map.singleton term (Term.Var new_var)
-      setNextStep startUnfolding 
-        $ local (substitute gensub)
-        $ generalise (term, new_var)
-        
-    InductStep var path -> do
-      let dtype = Type.fromVar (typeOf var)
-      cons <- Var.caseSplit dtype
-      branches <- addPath path 
-        $ mapM (doInduct var) cons
-      return $ Term.Cse Term.SplitCase (Term.Var var) branches
+  terms <- asks (termList . goal)
+  mby_step <- firstM (runMaybeT . criticalStep) terms
+  case mby_step of
+    Just step -> doStep step
+    Nothing -> setNextStep startUnfolding finish
   where
-  doSplit :: ZTerm -> ZTerm -> DeforestT d m ZAlt
-  doSplit term con_term = id
-    $ addFact (Logic.Equal term con_term) 
-    $ normaliseEnv
-    $ Term.Alt con vars `liftM` doCriticalStep
+  doStep :: CriticalStep -> DeforestT d m ZTerm
+  doStep (SplitStep term) = do
+    cons <- Var.caseSplit dtype
+    branches <- mapM doSplit cons
+    return $ Term.Cse Term.SplitCase term branches
     where
-    (con:vars) = map Term.fromVar (Term.flattenApp con_term)
+    dtype = Type.fromVar (typeOf term)
     
-  doInduct :: ZVar -> ZTerm -> DeforestT d m ZAlt
-  doInduct var con_term = do
-    new_inds <- concatMapM generateInducts rec_vars
-    addInducts new_inds 
-      $ local (substitute ind_sub) 
+    doSplit :: ZTerm -> DeforestT d m ZAlt
+    doSplit con_term = id
+      $ addFact (Logic.Equal term con_term) 
       $ normaliseEnv
       $ Term.Alt con vars `liftM` doCriticalStep
-    where
-    (con:vars) = map Term.fromVar (Term.flattenApp con_term)
-    rec_vars = filter ((== (typeOf var)) . typeOf) vars
-    ind_sub = Map.singleton (Term.Var var) con_term
-      
-    generateInducts :: ZVar -> DeforestT d m [Induct d]
-    generateInducts rec_var = asks (map genInd . inducts)
       where
-      rec_sub = Map.singleton (Term.Var var) (Term.Var rec_var)
+      (con:vars) = map Term.fromVar (Term.flattenApp con_term)
       
-      genInd :: Induct d -> Induct d
-      genInd (Induct goal vars) = 
-        Induct (substitute rec_sub goal) (Map.insert var rec_var vars)
+  doStep (Generalise term) = do
+    new_var <- Var.generalise term
+    let gensub = Map.singleton term (Term.Var new_var)
+    setNextStep (setNextStep startUnfolding finish) 
+      $ local (substitute gensub)
+      $ generalise (term, new_var)
+        
+  doStep (InductStep var path) = do
+    cons <- Var.caseSplit dtype
+    branches <- addPath path 
+      $ mapM doInduct cons
+    return $ Term.Cse Term.SplitCase (Term.Var var) branches
+    where
+    dtype = Type.fromVar (typeOf var)
     
-criticalStep :: Deforestable d m => ZTerm -> DeforestT d m CriticalStep
+    doInduct :: ZTerm -> DeforestT d m ZAlt
+    doInduct con_term = do
+      new_inds <- concatMapM generateInducts rec_vars
+      addInducts new_inds 
+        $ local (substitute ind_sub)
+        $ normaliseEnv
+        $ Term.Alt con vars `liftM` doCriticalStep
+      where
+      (con:vars) = map Term.fromVar (Term.flattenApp con_term)
+      rec_vars = filter ((== (typeOf var)) . typeOf) vars
+      ind_sub = Map.singleton (Term.Var var) con_term
+        
+      generateInducts :: ZVar -> DeforestT d m [Induct d]
+      generateInducts rec_var = asks (map genInd . inducts)
+        where
+        rec_sub = Map.singleton (Term.Var var) (Term.Var rec_var)
+        
+        genInd :: Induct d -> Induct d
+        genInd (Induct goal vars) = 
+          Induct (substitute rec_sub goal) (Map.insert var rec_var vars)
+    
+criticalStep :: Deforestable d m => ZTerm -> MaybeT (DeforestT d m) CriticalStep
 criticalStep orig_term@(Term.flattenApp -> 
     fix_term@(Term.Fix fix_var fix_rhs) : args) = do
   bgfacts <- asks facts
@@ -208,9 +225,13 @@ criticalStep (Term.Cse (Term.FoldCase name _) cse_term _) =
   addToPath other = other
   
 criticalStep (Term.Var var)
-  | Type.isVar (typeOf var) =
+  | not (Var.isConstructor var)
+  , Type.isVar (typeOf var) =
       return (InductStep var mempty)
 
-criticalStep other =
-  error $ "Did criticalStep of " ++ show other
+criticalStep other = mzero
+
+
+instance Show d => Show (Induct d) where
+  show (Induct ind vars) = show ind
 

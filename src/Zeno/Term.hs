@@ -272,25 +272,25 @@ instance (Ord a, TermTraversable t a) => WithinTraversable (Term a) t where
     mapWithinA (Alt con vars term) = 
       Alt con vars `liftM` mapWithinT term
     
-  substitute sub = mapTerms substituteT
+  substitute s = mapTerms (substituteT s)
     where
-    substituteT term = 
+    substituteT sub term = 
       tryReplace sub (subst term)
       where
       subst (Lam var rhs) = 
-        Lam var (substituteT rhs)
+        Lam var (substituteT sub' rhs)
         where sub' = removeVariable var sub
       subst (Fix var rhs) =
-        Fix var (substituteT rhs)
+        Fix var (substituteT sub' rhs)
         where sub' = removeVariable var sub
       subst (App lhs rhs) =
-        App (substituteT lhs) (substituteT rhs)
+        App (substituteT sub lhs) (substituteT sub rhs)
       subst (Cse srt term alts) = 
-        Cse srt (substituteT term) (map substituteA alts)
+        Cse srt (substituteT sub term) (map (substituteA sub) alts)
       subst other = other
       
-    substituteA (Alt con vars term) =
-      Alt con vars (substituteT term)
+    substituteA sub (Alt con vars term) =
+      Alt con vars (substituteT sub' term)
       where
       sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
       

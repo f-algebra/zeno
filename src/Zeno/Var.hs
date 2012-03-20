@@ -139,7 +139,7 @@ recursiveArguments term
   args = tail (Term.flattenApp term)
 
 generalise :: MonadUnique m => ZTerm -> m ZVar
-generalise term = new Nothing (typeOf term) Universal
+generalise term = declare ("gen(" ++ show term ++ ")") (typeOf term) Universal
   
 new :: MonadUnique m => Maybe String -> ZType -> ZVarSort -> m ZVar
 new label typ srt = do

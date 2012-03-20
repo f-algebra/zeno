@@ -118,7 +118,7 @@ eval (Term.Cse cse_srt cse_of cse_alts) =
       Just match -> Just match
     bound_vars = map Term.Var . Term.altVars $ match
     sub = Map.fromList $ bound_vars `zip` term_args 
-
+    
 eval other = do
   flattened <- mapM eval (Term.flattenApp other)
   evalApp flattened

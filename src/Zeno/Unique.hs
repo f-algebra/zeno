@@ -38,3 +38,6 @@ instance (MonadUnique m, Monoid w) => MonadUnique (RWST r w s m) where
   
 instance (Error e, MonadUnique m) => MonadUnique (ErrorT e m) where
   new = lift new
+  
+instance MonadUnique m => MonadUnique (MaybeT m) where
+  new = lift new

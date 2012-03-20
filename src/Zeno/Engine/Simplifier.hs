@@ -26,22 +26,24 @@ import qualified Zeno.Engine.Deforester as Deforest
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 
-run :: (MonadUnique m) => ZTerm -> m ZTerm
+run :: (MonadUnique m, MonadPlus m) => ZTerm -> m ZTerm
 run term = do
-  result :: Either SimplifyErr (ZTerm, [ZClause]) 
-    <- (runErrorT . runWriterT . Deforest.deforest) startingGoal
+  result :: Maybe (ZTerm, [ZClause]) 
+    <- (runMaybeT . runWriterT . Deforest.deforest) startingGoal
   case result of
-    Left err -> undefined
-    Right (term', to_prove) -> return term'
+    Nothing -> mzero
+    Just (term', to_prove) -> 
+      return $ Term.unflattenLam vars term'
   where
-  startingGoal = SimplifyGoal term err
-  err = error "Tried to access SimplifyGoal.replaceWithMe before it was set"
+  (vars, term') = Term.flattenLam term 
+  startingGoal = SimplifyGoal term' err
+  err = error "Tried to access SimplifyGoal.replaceWithMe before it was defined"
 
 type SimplifyErr = String
 
 -- | Outputs a list of intermediary lemmas to be proven
 -- in order for this simplification to be sound
-type SimplifyT m = WriterT [ZClause] (ErrorT SimplifyErr m)
+type SimplifyT m = WriterT [ZClause] (MaybeT m)
 
 data SimplifyGoal
   = SimplifyGoal    { simplifyMe :: !ZTerm
@@ -66,7 +68,7 @@ modifyGoal f = local $ \e -> e { Deforest.goal = f (Deforest.goal e) }
 setReplaceWith :: MonadUnique m => ZTerm 
   -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
 setReplaceWith term = modifyGoal $ \g -> g { replaceWithMe = term }
-                    
+
 instance MonadUnique m 
       => Deforestable SimplifyGoal (SimplifyT m) where
       
@@ -75,15 +77,22 @@ instance MonadUnique m
     let free_vars = (Set.toList . Var.freeZVars) goal
         var_types = map typeOf free_vars
         fun_type = Type.unflatten (var_types ++ [typeOf goal])
-    new_fun <- Var.invent fun_type Var.Universal
+    new_fun <- Var.declare ("[" ++ show goal ++ "]") fun_type Var.Universal
     let new_term = Term.unflattenApp 
                  $ map Term.Var (new_fun : free_vars) 
     inner_term <- setReplaceWith new_term Deforest.continue
-    return 
-      $ Term.Fix new_fun
-      $ Term.unflattenLam free_vars inner_term
+    if not (new_fun `elem` inner_term)
+    then return goal
+    else do
+      let new_fix = Term.Fix new_fun
+                  $ Term.unflattenLam free_vars inner_term
+      Term.reannotate
+        $ Term.unflattenApp (new_fix : map Term.Var free_vars)
       
-  generalise _ = do
+  generalise _ =
+    Deforest.continue
+      
+  finish = do
     goal <- asks (simplifyMe . Deforest.goal)
     inds <- Deforest.usableInducts
     let apply = appEndo . concatMap (Endo . applyInduct) $ inds
@@ -92,6 +101,11 @@ instance MonadUnique m
     applyInduct :: Induct SimplifyGoal -> ZTerm -> ZTerm
     applyInduct (Deforest.inductGoal -> SimplifyGoal simp repl) = 
       substitute (Map.singleton simp repl)
+      
+      
+instance Show SimplifyGoal where
+  show (SimplifyGoal simp repl) = 
+    "simp(" ++ show simp ++ " => " ++ show repl ++ ")"
     
 {-
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt

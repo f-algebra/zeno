@@ -39,7 +39,7 @@ module Zeno.Prelude
   concatMap, concatMapM, partitionM,
   fromJustT, anyM, allM, findM, sortWith,
   minimalBy, nubOrd, elemOrd, intersectOrd,
-  fromRight, fromLeft, traceMe, setAt,
+  fromRight, fromLeft, traceMe, setAt, firstM,
   wrapFunctor, unwrapFunctor, FunctorWrapper
 )
 where
@@ -144,6 +144,12 @@ findM p (x:xs) = do
   if found
     then return (Just x)
     else findM p xs
+    
+firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
+firstM _ [] = return Nothing
+firstM f (a:as) = do
+  mby_b <- f a
+  maybe (firstM f as) (return . Just) mby_b
     
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
 sortWith f = sortBy (compare `on` f)
