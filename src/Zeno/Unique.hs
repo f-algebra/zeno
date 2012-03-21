@@ -1,5 +1,5 @@
 module Zeno.Unique (
-  Unique, MonadUnique (..), next
+  Unique, MonadUnique (..), stream, new
 ) where
 
 import Prelude ()
@@ -7,12 +7,19 @@ import Zeno.Prelude
 
 newtype Unique = Unique { run :: Int }
   deriving ( Eq, Ord )
-
-next :: Unique -> Unique
-next = Unique . (+ 1) . run
+  
+stream :: [Unique]
+stream = map Unique [1..]
 
 class Monad m => MonadUnique m where
-  new :: m Unique
+  getStream :: m [Unique]
+  putStream :: [Unique] -> m ()
+  
+new :: MonadUnique m => m Unique
+new = do
+  (fst:rest) <- getStream
+  putStream rest
+  return fst
   
 instance Show Unique where
   show = intToChars . run
@@ -28,16 +35,21 @@ instance Monoid Unique where
   mappend (Unique i) (Unique j) = Unique (max i j)
   
 instance MonadUnique m => MonadUnique (ReaderT r m) where
-  new = lift new
+  getStream = lift getStream
+  putStream = lift . putStream
   
 instance (MonadUnique m, Monoid w) => MonadUnique (WriterT w m) where
-  new = lift new
+  getStream = lift getStream
+  putStream = lift . putStream
   
 instance (MonadUnique m, Monoid w) => MonadUnique (RWST r w s m) where
-  new = lift new
+  getStream = lift getStream
+  putStream = lift . putStream
   
 instance (Error e, MonadUnique m) => MonadUnique (ErrorT e m) where
-  new = lift new
+  getStream = lift getStream
+  putStream = lift . putStream
   
 instance MonadUnique m => MonadUnique (MaybeT m) where
-  new = lift new
+  getStream = lift getStream
+  putStream = lift . putStream

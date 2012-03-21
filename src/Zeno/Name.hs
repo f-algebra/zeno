@@ -1,5 +1,5 @@
 module Zeno.Name (
-  Name, MonadUnique,
+  Name, MonadUnique, Unique,
   new, clone, invent, declare, label
 ) where
 

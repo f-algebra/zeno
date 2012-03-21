@@ -8,7 +8,8 @@ import Prelude ()
 import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification
-import Zeno.Name ( Name, MonadUnique )
+import Zeno.Name ( Name )
+import Zeno.Unique ( MonadUnique, Unique )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, ZAlt,
                   ZVar, ZTermSubstitution, ZEquation )
 import Zeno.Type ( typeOf )
@@ -21,30 +22,41 @@ import qualified Zeno.Type as Type
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
+import qualified Zeno.Unique as Unique
 import qualified Zeno.Core as Zeno
 import qualified Data.Map as Map
-import qualified Data.Set as Set
+import qualified Data.Set as Set  
 
-type DeforestT d m = ReaderT (Env d m) m
+-- type DeforestT d m = ReaderT (Env d m) m
 type CriticalPath = [Name]
 
 class ( Ord d, Show d
+      , MonadUnique m
       , WithinTraversable ZTerm d
-      , TermTraversable d ZVar
-      , MonadUnique m ) => Deforestable d m where
+      , TermTraversable d ZVar ) => Deforestable d m where
   start :: DeforestT d m ZTerm
   generalise :: (ZTerm, ZVar) -> DeforestT d m ZTerm
   finish :: DeforestT d m ZTerm
-  
-deforest :: Deforestable d m => d -> m ZTerm
-deforest goal = runReaderT startUnfolding env
+
+deforest :: (MonadUnique m, Deforestable d m) => d -> m ZTerm
+deforest goal = do
+  unis <- Unique.getStream
+  mby_res <- (startDeforestT startUnfolding) env unis
+  case mby_res of
+    Nothing -> absurdErr
+    Just (res, unis') -> do
+      Unique.putStream unis'
+      return res
+      
   where
   env = Env { goal = goal
             , inducts = mempty
             , facts = mempty
             , usedPaths = mempty
-            , nextStep = return err }
-  err = error "Tried to access Env.nextStep before it was defined"
+            , nextStep = nextStepErr }
+            
+  nextStepErr = error "Tried to access Env.nextStep before it was defined"
+  absurdErr = error $ "Absurdity at top level deforestation of " ++ show goal
   
 data Induct d 
   = Induct    { inductGoal :: !d
@@ -55,7 +67,7 @@ data Env d m
               , inducts :: ![Induct d]
               , facts :: ![ZEquation]
               , usedPaths :: !(Set CriticalPath)
-              , nextStep :: !(DeforestT d m ZTerm) }
+              , nextStep :: DeforestT d m ZTerm }
               
 instance TermTraversable d ZVar => TermTraversable (Env d m) ZVar where
   mapTermsM f env = do
@@ -231,7 +243,27 @@ criticalStep (Term.Var var)
 
 criticalStep other = mzero
 
+startDeforestT :: Monad m => DeforestT d m a -> DeforestM d m a
+startDeforestT (DeforestT f) = f $ \a _ unis -> return (Just (a, unis))
+
+type DeforestM d m a = Env d m -> [Unique] -> m (Maybe (a, [Unique])) 
+
+-- | The CPS transform of 'DeforestM'
+newtype DeforestT d m a 
+  = DeforestT { runDeforestT :: forall r . (a -> DeforestM d m r) -> DeforestM d m r }
+  
+instance Monad (DeforestT d m) where
+  return x = DeforestT $ \k -> k x
+  DeforestT m >>= f = DeforestT $ \k -> m $ \a -> runDeforestT (f a) k
+  
+instance MonadReader (Env d m) (DeforestT d m) where
+  ask = DeforestT $ \k env unis -> (k env) env unis
+  local f m = DeforestT $ \k env unis -> 
+    (runDeforestT m) (\a env -> (k a) (f env)) env unis
+  
+instance MonadUnique (DeforestT d m) where
+  getStream = DeforestT $ \k env unis -> (k unis) env unis
+  putStream unis = DeforestT $ \k env _ -> (k ()) env unis
 
 instance Show d => Show (Induct d) where
   show (Induct ind vars) = show ind
-

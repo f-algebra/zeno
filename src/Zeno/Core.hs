@@ -27,7 +27,7 @@ type ZProof = ()
 type Zeno = State ZenoState
 
 data ZenoState
-  = ZenoState         { uniqueGen :: !Unique,
+  = ZenoState         { uniques :: ![Unique],
                         theory :: !ZenoTheory,
                         output :: ![String] }
 
@@ -43,14 +43,16 @@ data DiscoveredLemma
                         discoveredReason :: !String }
                         
 instance MonadUnique (State ZenoState) where
-  new = unwrapFunctor Unique.new
-      
+  getStream = unwrapFunctor Unique.getStream
+  putStream = unwrapFunctor . Unique.putStream    
+  
 instance MonadState ZenoState m => MonadUnique (FunctorWrapper m) where
-  new = wrapFunctor $ do
-    uni <- gets uniqueGen
-    modify $ \s -> s { uniqueGen = Unique.next (uniqueGen s) }
-    return uni 
-   
+  getStream = wrapFunctor $ 
+    gets uniques
+    
+  putStream str = wrapFunctor $
+    modify $ \s -> s { uniques = str }
+  
 instance Empty ZenoTheory where
   empty = ZenoTheory  { terms = mempty,
                         types = mempty,
@@ -58,7 +60,7 @@ instance Empty ZenoTheory where
                         theorems = mempty }
    
 instance Empty ZenoState where
-  empty = ZenoState   { uniqueGen = mempty,
+  empty = ZenoState   { uniques = Unique.stream,
                         theory = empty,
                         output = mempty }
 
