@@ -22,6 +22,7 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Type as Type
 import qualified Zeno.Engine.Deforester as Deforest
+import qualified Zeno.Engine.Checker as Checker
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -36,8 +37,7 @@ run term = do
       return $ Term.unflattenLam vars term'
   where
   (vars, term') = Term.flattenLam term 
-  startingGoal = SimplifyGoal term' err
-  err = error "Tried to access SimplifyGoal.replaceWithMe before it was defined"
+  startingGoal = SimplifyGoal term' empty empty
 
 type SimplifyErr = String
 
@@ -47,16 +47,25 @@ type SimplifyT m = WriterT [ZClause] (MaybeT m)
 
 data SimplifyGoal
   = SimplifyGoal    { simplifyMe :: !ZTerm
-                    , replaceWithMe :: ZTerm }
-  deriving ( Eq, Ord )
+                    , replaceWithMe :: !ZTerm
+                    , context :: !(ZTerm -> ZTerm) }
+                    
+instance Eq SimplifyGoal where
+  (==) = (==) `on` simplifyMe
+  
+instance Ord SimplifyGoal where
+  compare = compare `on` simplifyMe
 
 instance TermTraversable SimplifyGoal ZVar where
-  mapTermsM f (SimplifyGoal simp repl) = 
-    return SimplifyGoal `ap` f simp `ap` f repl
+  mapTermsM f goal = do
+    simp' <- f (simplifyMe goal)
+    repl' <- f (replaceWithMe goal)
+    return $ goal { simplifyMe = simp', replaceWithMe = repl' }
     
-  mapTerms f (SimplifyGoal simp repl) = 
-    SimplifyGoal (f simp) (f repl)
-    
+  mapTerms f goal =
+    goal { simplifyMe = f (simplifyMe goal)
+         , replaceWithMe = f (replaceWithMe goal) }
+         
   -- | While replaceWithMe can be modified it should not be accessed
   termList = 
     return . simplifyMe
@@ -99,13 +108,13 @@ instance MonadUnique m
     return (apply goal)
     where
     applyInduct :: Induct SimplifyGoal -> ZTerm -> ZTerm
-    applyInduct (Deforest.inductGoal -> SimplifyGoal simp repl) = 
-      substitute (Map.singleton simp repl)
+    applyInduct (Deforest.inductGoal -> goal) = 
+      substitute $ Map.singleton (simplifyMe goal) (replaceWithMe goal)
       
       
 instance Show SimplifyGoal where
-  show (SimplifyGoal simp repl) = 
-    "simp(" ++ show simp ++ " => " ++ show repl ++ ")"
+  show (SimplifyGoal simp repl cxt) = 
+    "<" ++ show (cxt empty) ++ ">[" ++ show simp ++ " => " ++ show repl ++ "]"
     
 {-
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt

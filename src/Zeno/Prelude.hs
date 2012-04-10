@@ -110,6 +110,9 @@ concat = mconcat
 
 class Empty a where
   empty :: a
+  
+instance Empty (a -> a) where
+  empty = id
 
 concatMap :: Monoid m => (a -> m) -> [a] -> m
 concatMap f = concat . map f

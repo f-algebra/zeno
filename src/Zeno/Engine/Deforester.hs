@@ -41,13 +41,9 @@ class ( Ord d, Show d
 deforest :: (MonadUnique m, Deforestable d m) => d -> m ZTerm
 deforest goal = do
   unis <- Unique.getStream
-  mby_res <- (startDeforestT startUnfolding) env unis
-  case mby_res of
-    Nothing -> absurdErr
-    Just (res, unis') -> do
-      Unique.putStream unis'
-      return res
-      
+  (res, unis') <- (runDeforestT startUnfolding) env unis
+  Unique.putStream unis'
+  return res
   where
   env = Env { goal = goal
             , inducts = mempty
@@ -169,12 +165,14 @@ doCriticalStep = do
       where
       (con:vars) = map Term.fromVar (Term.flattenApp con_term)
       
-  doStep (Generalise term) = do
-    new_var <- Var.generalise term
-    let gensub = Map.singleton term (Term.Var new_var)
-    setNextStep (setNextStep startUnfolding finish) 
-      $ local (substitute gensub)
-      $ generalise (term, new_var)
+  doStep (Generalise gen_term) = do
+    new_var <- Var.generalise gen_term
+    let do_gen = substitute $ Map.singleton gen_term (Term.Var new_var)
+        un_gen = substitute $ Map.singleton (Term.Var new_var) gen_term
+    fmap un_gen
+      $ setNextStep (setNextStep startUnfolding finish) 
+      $ local do_gen
+      $ generalise (gen_term, new_var)
         
   doStep (InductStep var path) = do
     cons <- Var.caseSplit dtype
@@ -243,27 +241,27 @@ criticalStep (Term.Var var)
 
 criticalStep other = mzero
 
-startDeforestT :: Monad m => DeforestT d m a -> DeforestM d m a
-startDeforestT (DeforestT f) = f $ \a _ unis -> return (Just (a, unis))
 
-type DeforestM d m a = Env d m -> [Unique] -> m (Maybe (a, [Unique])) 
-
--- | The CPS transform of 'DeforestM'
 newtype DeforestT d m a 
-  = DeforestT { runDeforestT :: forall r . (a -> DeforestM d m r) -> DeforestM d m r }
+  = DeforestT { runDeforestT :: Env d m -> [Unique] -> m (a, [Unique]) }
   
-instance Monad (DeforestT d m) where
-  return x = DeforestT $ \k -> k x
-  DeforestT m >>= f = DeforestT $ \k -> m $ \a -> runDeforestT (f a) k
+instance Monad m => Functor (DeforestT d m) where
+  fmap f (DeforestT g) = 
+    DeforestT $ \env unis -> liftM (first f) (g env unis)
   
-instance MonadReader (Env d m) (DeforestT d m) where
-  ask = DeforestT $ \k env unis -> (k env) env unis
-  local f m = DeforestT $ \k env unis -> 
-    (runDeforestT m) (\a env -> (k a) (f env)) env unis
+instance Monad m => Monad (DeforestT d m) where
+  return x = DeforestT $ \_ unis -> return (x, unis)
+  DeforestT f >>= g = DeforestT $ \env unis -> do
+    (x, unis') <- f env unis
+    runDeforestT (g x) env unis'
+    
+instance Monad m => MonadReader (Env d m) (DeforestT d m) where
+  ask = DeforestT $ \env unis -> return (env, unis)
+  local f (DeforestT g) = DeforestT $ \env unis -> g (f env) unis
   
-instance MonadUnique (DeforestT d m) where
-  getStream = DeforestT $ \k env unis -> (k unis) env unis
-  putStream unis = DeforestT $ \k env _ -> (k ()) env unis
+instance Monad m => MonadUnique (DeforestT d m) where
+  getStream = DeforestT $ \_ unis -> return (unis, unis)
+  putStream unis = DeforestT $ \_ _ -> return ((), unis)
 
 instance Show d => Show (Induct d) where
   show (Induct ind vars) = show ind

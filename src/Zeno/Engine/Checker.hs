@@ -9,6 +9,7 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Core ( ZenoState )
+import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
                   ZVar, ZTermSubstitution )
 import Zeno.Reduction
@@ -39,9 +40,9 @@ run cls = do
       put state'
       return cex
       
-explore :: forall m . MonadState ZenoState m => ZTerm -> m [ZTerm]
+explore :: forall m . MonadUnique m => ZTerm -> m [ZTerm]
 explore term = do
-  term' <- unwrapFunctor (Term.reannotate term)
+  term' <- Term.reannotate term
   explored <- expl maxDepth term'
   return $ nubOrd $ checkCount explored
   where
@@ -52,7 +53,7 @@ explore term = do
     | depth > 0
     , Term.isVar st_term
     , Var.destructible st_term = do
-        cons <- unwrapFunctor $ Var.caseSplit st_dtype
+        cons <- Var.caseSplit st_dtype
         concatMapM explCon cons
     where
     st_term = Eval.strictTerm term
@@ -81,7 +82,7 @@ isConstantContext :: Context -> Bool
 isConstantContext (Constant {}) = True
 isConstantContext _ = False
     
-guessContext :: (MonadPlus m, MonadState ZenoState m) => ZTerm -> m Context
+guessContext :: (MonadPlus m, MonadUnique m) => ZTerm -> m Context
 guessContext term = do
   potentials <- explore term
   guard (not $ null potentials)
