@@ -12,6 +12,11 @@ import System.Random
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+
+liftMaybe :: MonadPlus m => Maybe a -> m a
+liftMaybe Nothing = mzero
+liftMaybe (Just x) = return x
+
 infixl 0 |> 
 
 (|>) :: a -> (a -> b) -> b

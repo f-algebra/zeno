@@ -13,6 +13,7 @@ import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Name ( MonadUnique )
 import Zeno.Show
+import Zeno.Evaluation ( normalise )
 import Zeno.Engine.Deforester ( Deforestable, DeforestT, Induct )
 
 import qualified Zeno.Name as Name
@@ -37,7 +38,7 @@ run term = do
       return $ Term.unflattenLam vars term'
   where
   (vars, term') = Term.flattenLam term 
-  startingGoal = SimplifyGoal term' empty empty
+  startingGoal = SimplifyGoal term' term' (Var.Context id (typeOf term'))
 
 type SimplifyErr = String
 
@@ -48,7 +49,7 @@ type SimplifyT m = WriterT [ZClause] (MaybeT m)
 data SimplifyGoal
   = SimplifyGoal    { simplifyMe :: !ZTerm
                     , replaceWithMe :: !ZTerm
-                    , context :: !(ZTerm -> ZTerm) }
+                    , goalContext :: !Var.Context }
                     
 instance Eq SimplifyGoal where
   (==) = (==) `on` simplifyMe
@@ -70,51 +71,87 @@ instance TermTraversable SimplifyGoal ZVar where
   termList = 
     return . simplifyMe
                     
-modifyGoal :: MonadUnique m => (SimplifyGoal -> SimplifyGoal) 
+modifyGoal :: Monad m => (SimplifyGoal -> SimplifyGoal) 
   -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
 modifyGoal f = local $ \e -> e { Deforest.goal = f (Deforest.goal e) }
 
-setReplaceWith :: MonadUnique m => ZTerm 
+setReplaceWith :: Monad m => ZTerm 
   -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
 setReplaceWith term = modifyGoal $ \g -> g { replaceWithMe = term }
+
+setContext :: Monad m => Var.Context
+  -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
+setContext cxt = modifyGoal $ \g -> g { goalContext = cxt }
+
+recursedOnVar :: ZVar -> ZTerm -> Bool
+recursedOnVar var = anyWithin splitUpon
+  where
+  splitUpon (Term.Cse _ (Term.Var x) _) = x == var
+  splitUpon _ = False
 
 instance MonadUnique m 
       => Deforestable SimplifyGoal (SimplifyT m) where
       
   start = do
     goal <- asks (simplifyMe . Deforest.goal)
+    cxt <- Checker.guessContext goal
     let free_vars = (Set.toList . Var.freeZVars) goal
         var_types = map typeOf free_vars
-        fun_type = Type.unflatten (var_types ++ [typeOf goal])
+        fun_type = Type.unflatten (var_types ++ [Var.contextArgType cxt])
     new_fun <- Var.declare ("[" ++ show goal ++ "]") fun_type Var.Universal
-    let new_term = Term.unflattenApp 
+    let new_term = Var.contextFunction cxt
+                 $ Term.unflattenApp 
                  $ map Term.Var (new_fun : free_vars) 
-    inner_term <- setReplaceWith new_term Deforest.continue
+    inner_term <- setReplaceWith new_term 
+                $ setContext cxt 
+                $ Deforest.continue
     if not (new_fun `elem` inner_term)
     then return goal
     else do
-      let new_fix = Term.Fix new_fun
-                  $ Term.unflattenLam free_vars inner_term
+      let (used_vars, unused_vars) = partition (flip recursedOnVar inner_term) free_vars
+          removeUnusedVarCalls = concatEndos 
+                               $ map (removeUnusedVarCall new_fun) unused_vars
+          new_fix = Term.Fix new_fun
+                  $ Term.unflattenLam used_vars
+                  $ removeUnusedVarCalls inner_term
       Term.reannotate
-        $ Term.unflattenApp (new_fix : map Term.Var free_vars)
-      
-  generalise _ =
-    Deforest.continue
-      
-  finish = do
-    goal <- asks (simplifyMe . Deforest.goal)
+        $ Var.contextFunction cxt
+        $ Term.unflattenApp (new_fix : map Term.Var used_vars)
+        
+    where
+    removeUnusedVarCall :: ZVar -> ZVar -> ZTerm -> ZTerm
+    removeUnusedVarCall fix_var unused_var = mapWithin remove
+      where
+      remove (Term.App fun_term (Term.Var arg_var))
+        | arg_var == unused_var
+        , head (Term.flattenApp fun_term) == Term.Var fix_var 
+        = fun_term
+      remove other = other
+
+  finish = 
+    asks (simplifyMe . Deforest.goal)
+        
+  induct result = do
     inds <- Deforest.usableInducts
-    let apply = appEndo . concatMap (Endo . applyInduct) $ inds
-    return (apply goal)
+    let applyRewrites = appEndo . concatMap (Endo . applyInduct) $ inds
+        result' = normalise $ applyRewrites result
+    cxt <- asks (goalContext . Deforest.goal)
+    case Var.withinContext result' cxt of
+      Nothing -> lift mzero
+      Just inner_term -> return inner_term
     where
     applyInduct :: Induct SimplifyGoal -> ZTerm -> ZTerm
-    applyInduct (Deforest.inductGoal -> goal) = 
-      substitute $ Map.singleton (simplifyMe goal) (replaceWithMe goal)
+    applyInduct (Deforest.inductGoal -> goal) = mapWithin apply
+      where
+      apply term 
+        | term `alphaEq` simplifyMe goal = replaceWithMe goal
+        | otherwise = term
       
       
 instance Show SimplifyGoal where
   show (SimplifyGoal simp repl cxt) = 
-    "<" ++ show (cxt empty) ++ ">[" ++ show simp ++ " => " ++ show repl ++ "]"
+    "<" ++ show (Var.contextFunction cxt empty) ++ ">[" 
+    ++ show simp ++ " => " ++ show repl ++ "]"
     
 {-
 freshenAltVars :: MonadState ZenoState m => ZAlt -> m ZAlt

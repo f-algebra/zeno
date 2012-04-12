@@ -1,7 +1,6 @@
 module Zeno.Engine.Checker (
-  ZCounterExample, Context (..),
+  ZCounterExample,
   run, explore, guessContext,
-  isConstantContext
 ) where
 
 import Prelude ()
@@ -73,27 +72,25 @@ explore term = do
     | Var.isConstructorTerm term = return [term]
     | otherwise = return []
 
-data Context
-  = Context   { contextFunction :: ZTerm -> ZTerm,
-                contextArgType :: ZType }
-  | Constant  { constantTerm :: ZTerm }
-  
-isConstantContext :: Context -> Bool
-isConstantContext (Constant {}) = True
-isConstantContext _ = False
-    
-guessContext :: (MonadPlus m, MonadUnique m) => ZTerm -> m Context
+guessContext :: MonadUnique m => ZTerm -> m Var.Context
 guessContext term = do
   potentials <- explore term
-  guard (not $ null potentials)
-  let (p:ps) = potentials
-  if all (alphaEq p) ps
-  then return (Constant p)
-  else 
-    case matchContext potentials of
-      Nothing -> mzero
-      Just (context, gap_type) -> return (Context context gap_type)
+  if null potentials
+  then return idContext
+  else do
+    let (p:ps) = potentials
+    if all (alphaEq p) ps
+    then return idContext --return (Constant p)
+    else 
+      case matchContext potentials of
+        Nothing -> return idContext
+        Just (context, gap_type) -> return (Var.Context context gap_type)
   where
+  idContext :: Var.Context
+  idContext = 
+    Var.Context { Var.contextFunction = id
+                , Var.contextArgType = typeOf term }
+  
   matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm, ZType)
   matchContext terms = do
     guard (Var.isConstructorTerm fst_con)

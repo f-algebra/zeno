@@ -1,6 +1,7 @@
 module Zeno.Engine.Deforester (
   Deforestable (..), Induct (..), DeforestT,
   deforest, goal, inducts, facts, continue,
+  setGoal, addFact,
   usableInducts, traceEnv
 ) where
 
@@ -35,7 +36,7 @@ class ( Ord d, Show d
       , WithinTraversable ZTerm d
       , TermTraversable d ZVar ) => Deforestable d m where
   start :: DeforestT d m ZTerm
-  generalise :: (ZTerm, ZVar) -> DeforestT d m ZTerm
+  induct :: ZTerm -> DeforestT d m ZTerm
   finish :: DeforestT d m ZTerm
 
 deforest :: (MonadUnique m, Deforestable d m) => d -> m ZTerm
@@ -130,24 +131,31 @@ usableInducts = asks (filter (not . Map.null . inductVars) . inducts)
 continue :: Deforestable d m => DeforestT d m ZTerm
 continue = join (asks nextStep)
 
-startUnfolding :: Deforestable d m => DeforestT d m ZTerm
-startUnfolding = setNextStep (setInduct doCriticalStep) 
-               $ start
-  where
-  setInduct = local $ \e -> e { inducts = [Induct (goal e) mempty] }
-
 data CriticalStep
   = SplitStep ZTerm
   | InductStep ZVar CriticalPath
   | Generalise ZTerm
 
+takeCriticalStep :: Deforestable d m => DeforestT d m (Maybe CriticalStep)
+takeCriticalStep = do
+  terms <- asks (termList . goal)
+  firstM (runMaybeT . criticalStep) terms
+
+startUnfolding :: Deforestable d m => DeforestT d m ZTerm
+startUnfolding = do
+  has_crit <- isJust <$> takeCriticalStep
+  if not has_crit
+  then finish
+  else setNextStep (setInduct doCriticalStep) start
+  where
+  setInduct = local $ \e -> e { inducts = [Induct (goal e) mempty] }
+
 doCriticalStep :: forall d m . Deforestable d m => DeforestT d m ZTerm
 doCriticalStep = do
-  terms <- asks (termList . goal)
-  mby_step <- firstM (runMaybeT . criticalStep) terms
+  mby_step <- takeCriticalStep
   case mby_step of
     Just step -> doStep step
-    Nothing -> setNextStep startUnfolding finish
+    Nothing -> finish >>= induct
   where
   doStep :: CriticalStep -> DeforestT d m ZTerm
   doStep (SplitStep term) = do
@@ -169,10 +177,10 @@ doCriticalStep = do
     new_var <- Var.generalise gen_term
     let do_gen = substitute $ Map.singleton gen_term (Term.Var new_var)
         un_gen = substitute $ Map.singleton (Term.Var new_var) gen_term
-    fmap un_gen
-      $ setNextStep (setNextStep startUnfolding finish) 
+    result <- fmap un_gen
       $ local do_gen
-      $ generalise (gen_term, new_var)
+      $ startUnfolding
+    induct result
         
   doStep (InductStep var path) = do
     cons <- Var.caseSplit dtype
@@ -262,6 +270,11 @@ instance Monad m => MonadReader (Env d m) (DeforestT d m) where
 instance Monad m => MonadUnique (DeforestT d m) where
   getStream = DeforestT $ \_ unis -> return (unis, unis)
   putStream unis = DeforestT $ \_ _ -> return ((), unis)
+  
+instance MonadTrans (DeforestT d) where
+  lift m = DeforestT $ \env unis -> do
+    x <- m
+    return (x, unis)
 
 instance Show d => Show (Induct d) where
   show (Induct ind vars) = show ind

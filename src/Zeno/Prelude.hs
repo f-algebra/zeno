@@ -36,7 +36,7 @@ module Zeno.Prelude
   
   Empty (..),
   (++), concat, intercalate, map, void,
-  concatMap, concatMapM, partitionM,
+  concatMap, concatMapM, partitionM, concatEndos,
   fromJustT, anyM, allM, findM, sortWith,
   minimalBy, nubOrd, elemOrd, intersectOrd,
   fromRight, fromLeft, traceMe, setAt, firstM,
@@ -156,6 +156,9 @@ firstM f (a:as) = do
     
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
 sortWith f = sortBy (compare `on` f)
+
+concatEndos :: [a -> a] -> a -> a
+concatEndos = appEndo . mconcat . map Endo
 
 instance Functor First where
   fmap f = First . fmap f . getFirst

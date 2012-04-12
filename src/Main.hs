@@ -50,10 +50,10 @@ command ("explore", arg) = do
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
   case mby_context of
-    Nothing -> return ()
-    Just (Checker.Constant kterm) -> 
-      Zeno.print $ "Guessed constant term: " ++ show kterm
-    Just (Checker.Context cxt typ) -> do
+    Nothing -> return () {-
+    Just (Var.Constant kterm) -> 
+      Zeno.print $ "Guessed constant term: " ++ show kterm -}
+    Just (Var.Context cxt typ) -> do
       cxt_filler <- Var.declare ("{" ++ show typ ++ "}") typ Var.Universal
       Zeno.print $ "Guessed context: " ++ show (cxt (Term.Var cxt_filler))
 command ("evaluate", arg) = do

@@ -4,6 +4,7 @@ module Zeno.Var (
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
   ZClause, ZTermSubstitution, ZEquation,
+  Context (..), 
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
@@ -57,6 +58,10 @@ data ZVarSort
   = Constructor
   | Universal
   
+data Context
+  = Context   { contextFunction :: !(ZTerm -> ZTerm),
+                contextArgType :: !ZType }
+                
 instance Empty ZVar where
   empty = Var empty empty Universal
 
@@ -119,9 +124,9 @@ destructible term =
   && not (isConstructorTerm term)
   && not (Term.isCse term)
   
-withinContext :: ZTerm -> (ZTerm -> ZTerm) -> Maybe ZTerm
-withinContext term context = 
-  case unifier (context empty) term of
+withinContext :: ZTerm -> Context -> Maybe ZTerm
+withinContext term (Context cxt_func _) = 
+  case unifier (cxt_func empty) term of
     NoUnifier -> Nothing
     Unifier sub ->
       case Map.toList sub of
@@ -139,7 +144,7 @@ recursiveArguments term
   args = tail (Term.flattenApp term)
 
 generalise :: MonadUnique m => ZTerm -> m ZVar
-generalise term = declare ("gen(" ++ show term ++ ")") (typeOf term) Universal
+generalise term = invent (typeOf term) Universal
   
 new :: MonadUnique m => Maybe String -> ZType -> ZVarSort -> m ZVar
 new label typ srt = do
