@@ -1,7 +1,7 @@
 module Zeno.Engine.Deforester (
   Deforestable (..), Induct (..), DeforestT,
   deforest, goal, inducts, facts, continue,
-  setGoal, addFact,
+  setGoal, addFact, absurd,
   usableInducts, traceEnv
 ) where
 
@@ -42,9 +42,12 @@ class ( Ord d, Show d
 deforest :: (MonadUnique m, Deforestable d m) => d -> m ZTerm
 deforest goal = do
   unis <- Unique.getStream
-  (res, unis') <- (runDeforestT startUnfolding) env unis
-  Unique.putStream unis'
-  return res
+  mby_res <- runMaybeT $ (runDeforestT startUnfolding) env unis
+  case mby_res of 
+    Nothing -> absurdErr
+    Just (res, unis') -> do
+      Unique.putStream unis'
+      return res
   where
   env = Env { goal = goal
             , inducts = mempty
@@ -131,6 +134,16 @@ usableInducts = asks (filter (not . Map.null . inductVars) . inducts)
 continue :: Deforestable d m => DeforestT d m ZTerm
 continue = join (asks nextStep)
 
+absurd :: Monad m => DeforestT d m ()
+absurd = DeforestT $ \_ _ -> mzero
+
+catchAbsurdity :: Monad m => DeforestT d m a -> DeforestT d m (Maybe a)
+catchAbsurdity (DeforestT f) = DeforestT $ \env unis -> do
+  mby_x <- lift $ runMaybeT (f env unis)
+  case mby_x of
+    Nothing -> return (Nothing, unis)
+    Just (x, unis') -> return (Just x, unis') 
+
 data CriticalStep
   = SplitStep ZTerm
   | InductStep ZVar CriticalPath
@@ -157,10 +170,19 @@ doCriticalStep = do
     Just step -> doStep step
     Nothing -> finish >>= induct
   where
+  mapIgnoringAbsurdities :: (a -> DeforestT d m ZAlt) -> [a] -> DeforestT d m [ZAlt]
+  mapIgnoringAbsurdities _ [] = return []
+  mapIgnoringAbsurdities f (x:xs) = do
+   mby_alt <- catchAbsurdity (f x)
+   rest <- mapIgnoringAbsurdities f xs
+   return $ case mby_alt of
+     Nothing -> rest
+     Just alt -> alt:rest
+  
   doStep :: CriticalStep -> DeforestT d m ZTerm
   doStep (SplitStep term) = do
     cons <- Var.caseSplit dtype
-    branches <- mapM doSplit cons
+    branches <- mapIgnoringAbsurdities doSplit cons
     return $ Term.Cse Term.SplitCase term branches
     where
     dtype = Type.fromVar (typeOf term)
@@ -185,7 +207,7 @@ doCriticalStep = do
   doStep (InductStep var path) = do
     cons <- Var.caseSplit dtype
     branches <- addPath path 
-      $ mapM doInduct cons
+      $ mapIgnoringAbsurdities doInduct cons
     return $ Term.Cse Term.SplitCase (Term.Var var) branches
     where
     dtype = Type.fromVar (typeOf var)
@@ -251,7 +273,7 @@ criticalStep other = mzero
 
 
 newtype DeforestT d m a 
-  = DeforestT { runDeforestT :: Env d m -> [Unique] -> m (a, [Unique]) }
+  = DeforestT { runDeforestT :: Env d m -> [Unique] -> MaybeT m (a, [Unique]) }
   
 instance Monad m => Functor (DeforestT d m) where
   fmap f (DeforestT g) = 
@@ -273,7 +295,7 @@ instance Monad m => MonadUnique (DeforestT d m) where
   
 instance MonadTrans (DeforestT d) where
   lift m = DeforestT $ \env unis -> do
-    x <- m
+    x <- lift m
     return (x, unis)
 
 instance Show d => Show (Induct d) where

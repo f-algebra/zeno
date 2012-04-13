@@ -7,6 +7,12 @@ let rec (add : nat -> nat -> nat) =
     case x of
       0 -> y
     | succ x' -> succ (add x' y);
+    
+let rec (mul : nat -> nat -> nat) = 
+  fun (x : nat) (y : nat) ->
+    case x of
+    | 0 -> 0
+    | succ x' -> add y (mul x' y);
   
 let rec (app : list -> list -> list) = 
   fun (xs : list) (ys : list) -> 
@@ -87,6 +93,9 @@ prop add_0 =
 prop revfalse = 
   all (xs : list) -> rev xs = xs;
   
+prop meep =
+  all (x : nat) -> leq x 0 = true;
+  
 let rec (app1 : list -> nat -> list) =
   fun (xs : list) (x : nat) -> 
     case xs of
@@ -94,5 +103,13 @@ let rec (app1 : list -> nat -> list) =
     | cons y ys -> cons y (app1 ys x);
     
 simplify 
-  fun (xs : list) (a : nat) (b : nat) -> rev (rev xs);
+  fun (xs : list) -> rev (rev xs);
+  
+simplify 
+  fun (xs : list) -> len (rev xs);
+  
+simplify
+  fun (x : nat) (y : nat) (z : nat) -> mul x (succ 0);
+  
+check meep;
 

@@ -52,19 +52,7 @@ instance TermTraversable (Equation a) a where
     Equal (f t1) (f t2)
     
   termList (Equal t1 t2) = [t1, t2]
-  {-
-instance Ord a => WithinTraversable (Term a) (Clause a) where
-  mapWithinM f = mapTermsM (mapWithinM f)
-  mapWithin f = mapTerms (mapWithin f)
-  foldWithin f = concatMap (foldWithin f) . termList
-  substitute s = mapTerms (substitute s)
   
-instance Ord a => WithinTraversable (Term a) (Equation a) where
-  mapWithinM f = mapTermsM (mapWithinM f)
-  mapWithin f = mapTerms (mapWithin f)
-  foldWithin f = concatMap (foldWithin f) . termList
-  substitute s = mapTerms (substitute s)  
-  -}
 addAntecedent :: Equation a -> Clause a -> Clause a
 addAntecedent eq cs = cs 
   { antecedents = antecedents cs ++ [eq] }

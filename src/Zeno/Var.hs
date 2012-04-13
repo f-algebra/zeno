@@ -4,7 +4,7 @@ module Zeno.Var (
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
   ZClause, ZTermSubstitution, ZEquation,
-  Context (..), 
+  Context (..), setType,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
@@ -72,6 +72,9 @@ instance Typed ZVar where
 instance Show ZVar where
   show = show . name 
 
+setType :: ZVar -> ZType -> ZVar
+setType var typ = var { varType = typ }
+  
 isConstructor :: ZVar -> Bool
 isConstructor (sort -> Constructor {}) = True
 isConstructor _ = False

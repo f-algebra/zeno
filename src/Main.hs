@@ -80,6 +80,7 @@ command ("invent", arg) = do
     case mby_def of
       Nothing -> "Couldn't invent a definition for " ++ func
      -- Just def -> "Found " ++ func ++ " = " ++ show def
+-}
 command ("check", arg) = do
   Just prop <- Zeno.lookupProp arg
   mby_cex <- runMaybeT (Checker.run prop)
@@ -87,7 +88,6 @@ command ("check", arg) = do
     case mby_cex of
       Nothing -> "Could not find counter-example."
       Just cex -> showSubstitution cex
--}
 command (other, _) = 
   return () 
   -- error $ "Command \"" ++ other ++ "\" not recognized."

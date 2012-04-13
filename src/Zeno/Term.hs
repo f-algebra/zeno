@@ -90,6 +90,11 @@ instance TermTraversable (Alt a) a where
     Alt con vars (f term)
   termList =
     return . altTerm
+    
+instance TermTraversable t a => TermTraversable [t] a where
+  mapTermsM f = mapM (mapTermsM f)
+  mapTerms f = map (mapTerms f)
+  termList = concatMap termList
  
 isVar :: Term a -> Bool
 isVar (Var {}) = True

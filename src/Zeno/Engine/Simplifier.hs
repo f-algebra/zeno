@@ -30,30 +30,26 @@ import qualified Data.Map as Map
 
 run :: (MonadUnique m, MonadPlus m) => ZTerm -> m ZTerm
 run term = do
-  result :: Maybe (ZTerm, [ZClause]) 
-    <- (runMaybeT . runWriterT . Deforest.deforest) startingGoal
+  result :: Maybe ZTerm
+    <- (runMaybeT . Deforest.deforest) startingGoal
   case result of
     Nothing -> mzero
-    Just (term', to_prove) -> 
+    Just term' -> 
       return $ Term.unflattenLam vars term'
   where
   (vars, term') = Term.flattenLam term 
   startingGoal = SimplifyGoal term' term' (Var.Context id (typeOf term'))
 
-type SimplifyErr = String
-
--- | Outputs a list of intermediary lemmas to be proven
--- in order for this simplification to be sound
-type SimplifyT m = WriterT [ZClause] (MaybeT m)
+type SimplifyT m = MaybeT m
 
 data SimplifyGoal
   = SimplifyGoal    { simplifyMe :: !ZTerm
                     , replaceWithMe :: !ZTerm
                     , goalContext :: !Var.Context }
-                    
+
 instance Eq SimplifyGoal where
   (==) = (==) `on` simplifyMe
-  
+
 instance Ord SimplifyGoal where
   compare = compare `on` simplifyMe
 
@@ -62,15 +58,15 @@ instance TermTraversable SimplifyGoal ZVar where
     simp' <- f (simplifyMe goal)
     repl' <- f (replaceWithMe goal)
     return $ goal { simplifyMe = simp', replaceWithMe = repl' }
-    
+
   mapTerms f goal =
     goal { simplifyMe = f (simplifyMe goal)
          , replaceWithMe = f (replaceWithMe goal) }
-         
+
   -- | While replaceWithMe can be modified it should not be accessed
   termList = 
     return . simplifyMe
-                    
+
 modifyGoal :: Monad m => (SimplifyGoal -> SimplifyGoal) 
   -> DeforestT SimplifyGoal m a -> DeforestT SimplifyGoal m a
 modifyGoal f = local $ \e -> e { Deforest.goal = f (Deforest.goal e) }
@@ -106,29 +102,29 @@ instance MonadUnique m
                 $ setContext cxt 
                 $ Deforest.continue
     if not (new_fun `elem` inner_term)
-    then return goal
+    then trace ("simplification failed: " ++ showWithDefinitions inner_term) $ return goal
     else do
       let (used_vars, unused_vars) = partition (flip recursedOnVar inner_term) free_vars
           removeUnusedVarCalls = concatEndos 
                                $ map (removeUnusedVarCall new_fun) unused_vars
           new_fix = Term.Fix new_fun
-                  $ Term.unflattenLam used_vars
+                  $ Term.unflattenLam used_vars 
                   $ removeUnusedVarCalls inner_term
+
       Term.reannotate
         $ Var.contextFunction cxt
         $ Term.unflattenApp (new_fix : map Term.Var used_vars)
-        
     where
     removeUnusedVarCall :: ZVar -> ZVar -> ZTerm -> ZTerm
     removeUnusedVarCall fix_var unused_var = mapWithin remove
       where
       remove (Term.App fun_term (Term.Var arg_var))
         | arg_var == unused_var
-        , head (Term.flattenApp fun_term) == Term.Var fix_var 
+        , head (Term.flattenApp fun_term) == Term.Var fix_var
         = fun_term
       remove other = other
 
-  finish = 
+  finish =
     asks (simplifyMe . Deforest.goal)
         
   induct result = do

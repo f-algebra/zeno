@@ -10,7 +10,8 @@ import Zeno.Unification
 import Zeno.Core ( ZenoState )
 import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
-                  ZVar, ZTermSubstitution )
+                  ZVar, ZTermSubstitution, ZEquation )
+import Zeno.Term ( TermTraversable )
 import Zeno.Reduction
 import Zeno.Type ( typeOf )
 
@@ -23,22 +24,33 @@ import qualified Zeno.Evaluation as Eval
 import qualified Data.Map as Map
 
 type ZCounterExample = Substitution ZVar ZTerm
-type Check = State ZenoState
 
 maxDepth :: Int
 maxDepth = 6
 
-run :: (MonadState ZenoState m, MonadPlus m) => ZClause -> m ZCounterExample
+run :: (MonadUnique m, MonadPlus m) => ZClause -> m ZCounterExample
 run cls = do
-  state <- get
-  cls' <- unwrapFunctor $ Term.reannotate cls
-  let (mby_cex, state') = runState (check maxDepth [] cls') state
-  case mby_cex of
-    Nothing -> mzero
-    Just cex -> do
-      put state'
-      return cex
+  cls' <- Term.reannotate cls
+  mby_cex <- check maxDepth [] cls' 
+  maybe mzero return mby_cex
+  
+strictVars :: TermTraversable t ZVar => t -> [ZVar]
+strictVars = nubOrd 
+  . filter (Type.isVar . typeOf)
+  . filter (not . Var.isConstructor)
+  . map Term.fromVar
+  . filter Term.isVar 
+  . map Eval.strictTerm
+  . Term.termList
       
+validate :: forall m . MonadUnique m => [ZEquation] -> m Bool
+validate = valid maxDepth []
+  where
+  valid :: Int -> [ZVar] -> [ZEquation] -> m Bool
+  valid 0 [] _ = return False
+  valid depth [] eqs = valid (depth - 1) (strictVars eqs) eqs
+  
+  
 explore :: forall m . MonadUnique m => ZTerm -> m [ZTerm]
 explore term = do
   term' <- Term.reannotate term
@@ -110,28 +122,18 @@ guessContext term = do
     gaps = map (!! gap_i) args
     gap_type = typeOf (head gaps)
     context fill = Term.unflattenApp $ fst_con:(setAt gap_i fill (head args))
-  
-check :: Int -> [ZVar] -> ZClause -> Check (Maybe ZCounterExample)
+
+check :: forall m . MonadUnique m => Int -> [ZVar] -> ZClause -> m (Maybe ZCounterExample)
 check 0 [] _ = return Nothing
 check depth [] cls = 
-  check (depth - 1) new_vars cls
-  where
-  new_vars 
-    = nubOrd 
-    $ filter (Type.isVar . typeOf)
-    $ filter (not . Var.isConstructor)
-    $ map Term.fromVar
-    $ filter Term.isVar 
-    $ map Eval.strictTerm
-    $ Term.termList cls
-  
+  check (depth - 1) (strictVars cls) cls
 check depth (split_var : other_vars) cls = do
   con_terms <- Var.caseSplit 
              $ Type.fromVar 
              $ typeOf split_var
   firstM checkCon con_terms
   where
-  checkCon :: ZTerm -> Check (Maybe ZCounterExample)
+  checkCon :: ZTerm -> m (Maybe ZCounterExample)
   checkCon con_term =
     case reduced of
       ReducedTo [] -> return Nothing
