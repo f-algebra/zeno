@@ -1,7 +1,7 @@
 module Zeno.Engine.Deforester (
   Deforestable (..), Induct (..), DeforestT,
   deforest, goal, inducts, facts, continue,
-  setGoal, addFact, absurd,
+  setGoal, absurd,
   usableInducts, traceEnv
 ) where
 
@@ -16,8 +16,9 @@ import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, ZAlt,
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Utils ( orderedSupersetOf )
-import Zeno.Evaluation ( evaluate )
+import Zeno.Evaluation ( normalise )
 
+import qualified Zeno.Facts as Facts
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
 import qualified Zeno.Logic as Logic
@@ -28,7 +29,6 @@ import qualified Zeno.Core as Zeno
 import qualified Data.Map as Map
 import qualified Data.Set as Set  
 
--- type DeforestT d m = ReaderT (Env d m) m
 type CriticalPath = [Name]
 
 class ( Ord d, Show d
@@ -96,6 +96,10 @@ instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
     Induct (mapTerms f goal) vars
   termList = termList . inductGoal
   
+instance Monad m => Facts.Reader (DeforestT d m) where
+  Facts.ask = asks facts
+  Facts.add fact = local $ \e -> e { facts = facts e ++ [fact] } 
+  
 traceEnv :: Deforestable d m => String -> DeforestT d m a -> DeforestT d m a
 traceEnv msg cont = do
   d <- asks goal
@@ -106,15 +110,15 @@ traceEnv msg cont = do
     $ trace "with"
     $ trace (intercalate "\n" $ map show inds)
     $ cont
-              
+
 normaliseEnv :: Deforestable d m => DeforestT d m a -> DeforestT d m a
-normaliseEnv = local $ \e -> evaluate (facts e) e
+normaliseEnv cont = do
+  env <- ask
+  env' <- normalise env
+  local (const env') cont
   
 setGoal :: Deforestable d m => d -> DeforestT d m a -> DeforestT d m a
 setGoal d = local $ \e -> e { goal = d } 
-  
-addFact :: Deforestable d m => ZEquation -> DeforestT d m a -> DeforestT d m a
-addFact fact = local $ \e -> e { facts = fact:(facts e) }
 
 addPath :: Deforestable d m => 
   CriticalPath -> DeforestT d m a -> DeforestT d m a
@@ -189,7 +193,7 @@ doCriticalStep = do
     
     doSplit :: ZTerm -> DeforestT d m ZAlt
     doSplit con_term = id
-      $ addFact (Logic.Equal term con_term) 
+      $ Facts.add (Logic.Equal term con_term) 
       $ normaliseEnv
       $ Term.Alt con vars `liftM` doCriticalStep
       where

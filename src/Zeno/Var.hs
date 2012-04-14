@@ -1,5 +1,5 @@
--- |Here we have the representation of variables inside Zeno; see 'ZVarClass' for the
--- different types of variable we can have.
+-- | Here we have the representation of variables inside Zeno; 
+-- see 'ZVarClass' for the different types of variable we can have.
 module Zeno.Var (
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
@@ -178,5 +178,4 @@ foldUniversal f = foldWithin foldVars
   foldVars (Term.Var x) = f x
   foldVars _ = mempty
   
-    
-    
+

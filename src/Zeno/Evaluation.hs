@@ -1,17 +1,17 @@
 -- | Beta-reduction
 module Zeno.Evaluation (
-  normalise, strictTerm, evaluate
+  normalise, strictTerm, criticalTerm, unrollFix
 ) where                    
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.ReaderWriter
 import Zeno.Var ( ZVar, ZTerm, ZEquation )
 import Zeno.Term ( TermTraversable, mapTerms )
 import Zeno.Traversing
 import Zeno.Show
 import Zeno.Utils ( orderedSupersetOf )
 
+import qualified Zeno.Facts as Facts
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
@@ -25,9 +25,9 @@ data EvalEnv
 
 type Eval = Reader EvalEnv
 
-unroll :: Maybe ZVar -> Eval a -> Eval a
-unroll Nothing = id
-unroll (Just var) = local $ \env ->
+addUnrolled :: Maybe ZVar -> Eval a -> Eval a
+addUnrolled Nothing = id
+addUnrolled (Just var) = local $ \env ->
   env { unrolledFixes = Set.insert var (unrolledFixes env) }
 
 isUnrolled :: ZVar -> Eval Bool
@@ -38,7 +38,12 @@ tryRewrite term = do
   rewrites <- asks backgroundRewrites
   return $ fromMaybe term 
          $ Map.lookup term rewrites
-   
+
+normalise :: (TermTraversable t ZVar, Facts.Reader m) => t -> m t
+normalise terms = do
+  facts <- Facts.ask
+  return $ evaluate facts terms
+
 evaluate :: TermTraversable t ZVar => [ZEquation] -> t -> t
 evaluate eqs = mapTerms (flip runReader startingEnv . eval)
   where
@@ -50,55 +55,39 @@ evaluate eqs = mapTerms (flip runReader startingEnv . eval)
     | Var.isConstructorTerm t2 = Just (t1, t2)
     | Var.isConstructorTerm t1 = Just (t2, t1)
     | otherwise = Nothing
-      
-normalise :: TermTraversable t ZVar => t -> t
-normalise = evaluate []
 
-strictTerm :: ZTerm -> ZTerm
-strictTerm = strict . normalise
+criticalTerm :: forall m . Facts.Reader m => ZTerm -> m ZTerm 
+criticalTerm = crit <=< normalise
   where
-  strict :: ZTerm -> ZTerm
-  strict term@(Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
-    strict unrolled
-    where
-    unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
-    unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
+  crit :: ZTerm -> m ZTerm
+  crit (Term.Cse (Term.FoldCase {}) term _) = crit term
+  crit (Term.Cse Term.SplitCase term _) = return term
+  crit term = do
+    mby_unrolled <- unrollFix term
+    maybe (return term) crit mby_unrolled
+
+strictTerm :: forall m . Facts.Reader m => ZTerm -> m ZTerm
+strictTerm = strict <=< normalise
+  where
+  strict :: ZTerm -> m ZTerm
   strict (Term.Cse _ term _) = strict term
-  strict other = other
+  strict term = do
+    mby_unrolled <- unrollFix term
+    maybe (return term) strict mby_unrolled
 
-{-
-criticalPair :: ZTerm -> Maybe CriticalPair
-criticalPair term 
-  | valid = Just cpair
-  | otherwise = Nothing
+unrollFix :: Facts.Reader m => ZTerm -> m (Maybe ZTerm)
+unrollFix (Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
+  liftM Just $ normalise $ Term.unflattenApp (unrolled_fix : args)
   where
-  cpair@(cterm, cpath) = runWriter (critical term)
-  
-  valid = not (null cpath)
-       && Var.destructible cterm
-       && all (not . orderedSupersetOf cpath) (Var.allSources cterm)
-  
-  critical :: ZTerm -> Writer CriticalPath ZTerm
-  critical (Term.flattenApp -> fix_term@(Term.Fix fix_var fix_rhs) : args) =
-    critical unrolled
-    where
-    unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
-    unrolled = normalise $ Term.unflattenApp (unrolled_fix : args)
-  critical (Term.Cse Term.SplitCase cse_term _) =
-    return cse_term
-  critical (Term.Cse (Term.FoldCase name _) cse_term _) = do
-    tell [name]
-    critical cse_term
-  critical term = 
-    return term
-  -}
+  unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
+unrollFix _ = return Nothing
 
 eval :: ZTerm -> Eval ZTerm
 eval (Term.Var x) = return (Term.Var x)
 eval (Term.Lam x t) = Term.Lam x <$> eval t
 eval (Term.Fix f t) = Term.Fix f <$> return t
 eval (Term.Cse cse_srt cse_of cse_alts) =
-  unroll (Term.caseSortFix cse_srt) $ do
+  addUnrolled (Term.caseSortFix cse_srt) $ do
     cse_of' <- (eval <=< tryRewrite) cse_of
     cse_alts' <- mapM evalAlt cse_alts
     if not (Var.isConstructorTerm cse_of')

@@ -96,7 +96,7 @@ instance Reducible ZEquation where
   reduce (Logic.Equal t1@(Term.Lam x1 _) t2@(Term.Lam x2 _)) =
     ReducedTo 
       $ pure 
-      $ normalise 
+      $ (runIdentity . normalise) 
       $ Logic.Equal (Term.App t1 arg) (Term.App t2 arg)
     where 
     arg = Term.Var x1

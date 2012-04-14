@@ -95,6 +95,21 @@ instance TermTraversable t a => TermTraversable [t] a where
   mapTermsM f = mapM (mapTermsM f)
   mapTerms f = map (mapTerms f)
   termList = concatMap termList
+  
+instance (TermTraversable t1 a, TermTraversable t2 a) 
+  => TermTraversable (t1, t2) a where
+  
+  mapTermsM f (x1, x2) = do
+    x1' <- mapTermsM f x1
+    x2' <- mapTermsM f x2
+    return (x1', x2')
+    
+  mapTerms f (x1, x2) = 
+    (mapTerms f x1, mapTerms f x2)
+  
+  termList (x1, x2) =
+    termList x1 ++ termList x2
+  
  
 isVar :: Term a -> Bool
 isVar (Var {}) = True

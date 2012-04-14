@@ -1,6 +1,6 @@
 module Zeno.Engine.Checker (
   ZCounterExample,
-  run, explore, guessContext,
+  falisfy, explore, guessContext,
 ) where
 
 import Prelude ()
@@ -17,6 +17,7 @@ import Zeno.Type ( typeOf )
 
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
+import qualified Zeno.Facts as Facts
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
@@ -27,31 +28,42 @@ type ZCounterExample = Substitution ZVar ZTerm
 
 maxDepth :: Int
 maxDepth = 6
-
-run :: (MonadUnique m, MonadPlus m) => ZClause -> m ZCounterExample
-run cls = do
-  cls' <- Term.reannotate cls
-  mby_cex <- check maxDepth [] cls' 
-  maybe mzero return mby_cex
   
-strictVars :: TermTraversable t ZVar => t -> [ZVar]
-strictVars = nubOrd 
-  . filter (Type.isVar . typeOf)
-  . filter (not . Var.isConstructor)
-  . map Term.fromVar
-  . filter Term.isVar 
-  . map Eval.strictTerm
-  . Term.termList
-      
-validate :: forall m . MonadUnique m => [ZEquation] -> m Bool
-validate = valid maxDepth []
+strictVars :: (Facts.Reader m, TermTraversable t ZVar) => t -> m [ZVar]
+strictVars terms = do
+  s_terms <- mapM Eval.strictTerm (Term.termList terms)
+  return 
+    . nubOrd
+    . map Term.fromVar
+    . filter Var.destructible
+    . filter Term.isVar 
+    $ s_terms
+{-
+consistent :: forall m . (Facts.Reader m, MonadUnique m) => m Bool
+consistent = valid maxDepth []
   where
   valid :: Int -> [ZVar] -> [ZEquation] -> m Bool
   valid 0 [] _ = return False
   valid depth [] eqs = valid (depth - 1) (strictVars eqs) eqs
-  
-  
-explore :: forall m . MonadUnique m => ZTerm -> m [ZTerm]
+-}
+
+data Explored
+  = Explored  { exploredValue :: !ZTerm
+              , exploredMatches :: ![ZTerm] }
+              
+instance TermTraversable Explored ZVar where
+  mapTermsM f (Explored v ms) = 
+    return Explored `ap` f v `ap` mapM f ms
+  mapTerms f (Explored v ms) = 
+    Explored (f v) (map f ms)
+  termList (Explored v ms) = v ++ termList ms
+
+addMatch :: ZTerm -> Explored -> Explored
+addMatch term expl = 
+  assert (not $ Term.isVar term) 
+  $ expl { exploredMatches = term:(exploredMatches expl) }
+
+explore :: forall m . (MonadUnique m, Facts.Reader m) => ZTerm -> m [Explored]
 explore term = do
   term' <- Term.reannotate term
   explored <- expl maxDepth term'
@@ -59,30 +71,43 @@ explore term = do
   where
   checkCount ts = assert (length ts >= maxDepth) ts
   
-  expl :: Int -> ZTerm -> m [ZTerm]
-  expl depth term 
-    | depth > 0
-    , Term.isVar st_term
-    , Var.destructible st_term = do
-        cons <- Var.caseSplit st_dtype
-        concatMapM explCon cons
+  expl :: Int -> ZTerm -> m [Explored]
+  expl depth term = do
+    if depth == 0
+    then finished
+    else do
+      ct_term <- Eval.criticalTerm term
+      if not (Var.destructible ct_term)
+      then finished
+      else do
+        cons <- Var.caseSplit (Type.fromVar (typeOf ct_term))
+        case ct_term of
+          Term.Var ct_var -> concatMapM (explInd ct_var) cons
+          ct_term -> 
+            addMatch ct_term
+            $ concatMapM (explSplit ct_term) cons 
     where
-    st_term = Eval.strictTerm term
-    st_var = Term.fromVar st_term
-    st_dtype = Type.fromVar (typeOf st_var)
-    
-    explCon :: ZTerm -> m [ZTerm]
-    explCon con_term = do
-      explored <- expl (depth - 1) 
-                $ Eval.normalise
-                $ replaceWithin (Term.Var st_var) con_term term
-      return 
-        $ map (replaceWithin con_term (Term.Var st_var)) 
-        $ explored
-    
-  expl _ term 
-    | Var.isConstructorTerm term = return [term]
-    | otherwise = return []
+    finished 
+      | not (anyWithin Term.isFix term) = return [term]
+      | otherwise = return []
+
+    explInd :: ZVar -> ZTerm -> m [Explored]
+    explInd ct_var con_term = do
+      explore_me <- Eval.normalise term'
+      explored <- expl (depth - 1) explore_me
+      return
+        $ replaceWithin con_term ct_vterm explored
+     where
+     ct_vterm = Term.Var ct_var
+     term' = replaceWithin ct_vterm con_term term
+      
+    explSplit :: ZTerm -> ZTerm -> m [Explored]
+    explSplit ct_term con_term = 
+      Facts.add new_fact $ do
+        explore_me <- normalise term
+        expl (depth - 1) explore_me 
+      where
+      new_fact = Logic.Equal ct_term con_term
 
 guessContext :: MonadUnique m => ZTerm -> m Var.Context
 guessContext term = do
@@ -123,29 +148,35 @@ guessContext term = do
     gap_type = typeOf (head gaps)
     context fill = Term.unflattenApp $ fst_con:(setAt gap_i fill (head args))
 
-check :: forall m . MonadUnique m => Int -> [ZVar] -> ZClause -> m (Maybe ZCounterExample)
-check 0 [] _ = return Nothing
-check depth [] cls = 
-  check (depth - 1) (strictVars cls) cls
-check depth (split_var : other_vars) cls = do
-  con_terms <- Var.caseSplit 
-             $ Type.fromVar 
-             $ typeOf split_var
-  firstM checkCon con_terms
+falsify :: forall m . MonadUnique m => ZClause -> m (Maybe ZCounterExample)
+falsify cls = do
+  cls' <- Term.reannotate cls
+  check maxDepth [] cls'
   where
-  checkCon :: ZTerm -> m (Maybe ZCounterExample)
-  checkCon con_term =
-    case reduced of
-      ReducedTo [] -> return Nothing
-      ReducedToFalse -> return success
-      ReducedTo sub_clses -> do
-        first <- firstM (check depth other_vars) sub_clses
-        return (addSplit <$> first)
+  check :: Int -> [ZVar] -> ZClause -> m (Maybe ZCounterExample)
+  check 0 [] _ = return Nothing
+  check depth [] cls = do
+    s_vars <- strictVars cls
+    check (depth - 1) s_vars cls
+  check depth (split_var : other_vars) cls = do
+    con_terms <- Var.caseSplit 
+               $ Type.fromVar 
+               $ typeOf split_var
+    firstM checkCon con_terms
     where
-    reduced 
-      = reduce
-      $ Eval.normalise
-      $ replaceWithin (Term.Var split_var) con_term cls
-      
-    addSplit = Map.insert split_var con_term
-    success = Just (addSplit mempty)
+    checkCon :: ZTerm -> m (Maybe ZCounterExample)
+    checkCon con_term =
+      case reduced of
+        ReducedTo [] -> return Nothing
+        ReducedToFalse -> return success
+        ReducedTo sub_clses -> do
+          first <- firstM (check depth other_vars) sub_clses
+          return (addSplit <$> first)
+      where
+      reduced 
+        = reduce
+        $ Eval.normalise
+        $ replaceWithin (Term.Var split_var) con_term cls
+        
+      addSplit = Map.insert split_var con_term
+      success = Just (addSplit mempty)
