@@ -114,11 +114,11 @@ class Empty a where
 instance Empty (a -> a) where
   empty = id
 
-concatMap :: Monoid m => (a -> m) -> [a] -> m
-concatMap f = concat . map f
+concatMap :: (Monoid m, Foldable f) => (a -> m) -> f a -> m
+concatMap f = concat . map f . toList
 
-concatMapM :: (Monoid b, Monad m) => (a -> m b) -> [a] -> m b
-concatMapM f = liftM concat . mapM f 
+concatMapM :: (Monoid b, Monad m, Foldable f) => (a -> m b) -> f a -> m b
+concatMapM f = liftM concat . mapM f . toList
 
 intercalate :: Monoid m => m -> [m] -> m
 intercalate x = concat . intersperse x
@@ -135,10 +135,10 @@ fromJustT :: Monad m => MaybeT m a -> m a
 fromJustT = liftM fromJust . runMaybeT
 
 anyM :: (Monad f, Traversable t) => (a -> f Bool) -> t a -> f Bool
-anyM f = liftM (foldr (||) False) . mapM f
+anyM f = liftM or . mapM f
 
 allM :: (Monad f, Traversable t) => (a -> f Bool) -> t a -> f Bool
-allM f = liftM (foldr (&&) True) . mapM f
+allM f = liftM and . mapM f
 
 findM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
 findM p [] = return Nothing

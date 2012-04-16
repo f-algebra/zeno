@@ -1,6 +1,6 @@
 module Zeno.Engine.Checker (
   ZCounterExample,
-  falisfy, explore, guessContext,
+  falsify, explore, guessContext, inconsistent
 ) where
 
 import Prelude ()
@@ -11,12 +11,13 @@ import Zeno.Core ( ZenoState )
 import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
                   ZVar, ZTermSubstitution, ZEquation )
-import Zeno.Term ( TermTraversable )
+import Zeno.Term ( TermTraversable (..) )
 import Zeno.Reduction
 import Zeno.Type ( typeOf )
 
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
+import qualified Zeno.Logic as Logic
 import qualified Zeno.Facts as Facts
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -38,25 +39,41 @@ strictVars terms = do
     . filter Var.destructible
     . filter Term.isVar 
     $ s_terms
-{-
-consistent :: forall m . (Facts.Reader m, MonadUnique m) => m Bool
-consistent = valid maxDepth []
-  where
-  valid :: Int -> [ZVar] -> [ZEquation] -> m Bool
-  valid 0 [] _ = return False
-  valid depth [] eqs = valid (depth - 1) (strictVars eqs) eqs
--}
 
+inconsistent :: forall m . (Facts.Reader m, MonadUnique m) => m Bool
+inconsistent = invalid maxDepth [] =<< Facts.ask 
+  where
+  invalid :: Int -> [ZVar] -> [ZEquation] -> m Bool
+  invalid 0 [] _ = return False
+  invalid depth [] eqs = do
+    s_vars <- liftM nubOrd $ concatMapM strictVars eqs
+    invalid (depth - 1) s_vars eqs
+  invalid depth (split_var : other_vars) eqs = do
+    con_terms <- Var.caseSplit 
+               $ Type.fromVar 
+               $ typeOf split_var
+    allM invalidCon con_terms
+    where
+    invalidCon :: ZTerm -> m Bool
+    invalidCon con_term = do 
+      reduced <- liftM (concatMap reduce)
+        $ mapM Eval.normalise
+        $ map (replaceWithin (Term.Var split_var) con_term) eqs
+      case reduced of
+        ReducedToFalse -> return True
+        ReducedTo eqs' -> invalid depth other_vars eqs'
+  
 data Explored
   = Explored  { exploredValue :: !ZTerm
               , exploredMatches :: ![ZTerm] }
+  deriving ( Eq, Ord )
               
 instance TermTraversable Explored ZVar where
   mapTermsM f (Explored v ms) = 
     return Explored `ap` f v `ap` mapM f ms
   mapTerms f (Explored v ms) = 
     Explored (f v) (map f ms)
-  termList (Explored v ms) = v ++ termList ms
+  termList (Explored v ms) = v:(termList ms)
 
 addMatch :: ZTerm -> Explored -> Explored
 addMatch term expl = 
@@ -83,12 +100,10 @@ explore term = do
         cons <- Var.caseSplit (Type.fromVar (typeOf ct_term))
         case ct_term of
           Term.Var ct_var -> concatMapM (explInd ct_var) cons
-          ct_term -> 
-            addMatch ct_term
-            $ concatMapM (explSplit ct_term) cons 
+          ct_term -> concatMapM (explSplit ct_term) cons 
     where
     finished 
-      | not (anyWithin Term.isFix term) = return [term]
+      | Var.isConstructorTerm term = return [Explored term []]
       | otherwise = return []
 
     explInd :: ZVar -> ZTerm -> m [Explored]
@@ -104,14 +119,15 @@ explore term = do
     explSplit :: ZTerm -> ZTerm -> m [Explored]
     explSplit ct_term con_term = 
       Facts.add new_fact $ do
-        explore_me <- normalise term
-        expl (depth - 1) explore_me 
+        explore_me <- Eval.normalise term
+        liftM (map (addMatch ct_term)) 
+          $ expl (depth - 1) explore_me
       where
       new_fact = Logic.Equal ct_term con_term
 
-guessContext :: MonadUnique m => ZTerm -> m Var.Context
+guessContext :: (Facts.Reader m, MonadUnique m) => ZTerm -> m Var.Context
 guessContext term = do
-  potentials <- explore term
+  potentials <- liftM (map exploredValue) $ explore term
   if null potentials
   then return idContext
   else do
@@ -148,7 +164,8 @@ guessContext term = do
     gap_type = typeOf (head gaps)
     context fill = Term.unflattenApp $ fst_con:(setAt gap_i fill (head args))
 
-falsify :: forall m . MonadUnique m => ZClause -> m (Maybe ZCounterExample)
+falsify :: forall m . (MonadUnique m, Facts.Reader m) 
+  => ZClause -> m (Maybe ZCounterExample)
 falsify cls = do
   cls' <- Term.reannotate cls
   check maxDepth [] cls'
@@ -165,7 +182,10 @@ falsify cls = do
     firstM checkCon con_terms
     where
     checkCon :: ZTerm -> m (Maybe ZCounterExample)
-    checkCon con_term =
+    checkCon con_term = do 
+      reduced <- liftM reduce
+        $ Eval.normalise
+        $ replaceWithin (Term.Var split_var) con_term cls
       case reduced of
         ReducedTo [] -> return Nothing
         ReducedToFalse -> return success
@@ -173,10 +193,10 @@ falsify cls = do
           first <- firstM (check depth other_vars) sub_clses
           return (addSplit <$> first)
       where
-      reduced 
-        = reduce
-        $ Eval.normalise
-        $ replaceWithin (Term.Var split_var) con_term cls
-        
       addSplit = Map.insert split_var con_term
       success = Just (addSplit mempty)
+
+instance Show Explored where
+  show (Explored term matches) = 
+    "Explored " ++ show term ++ " <= " ++ show matches
+      

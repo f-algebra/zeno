@@ -13,9 +13,9 @@ import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Name ( MonadUnique )
 import Zeno.Show
-import Zeno.Evaluation ( normalise )
 import Zeno.Engine.Deforester ( Deforestable, DeforestT, Induct )
 
+import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
@@ -130,7 +130,7 @@ instance MonadUnique m
   induct result = do
     inds <- Deforest.usableInducts
     let applyRewrites = appEndo . concatMap (Endo . applyInduct) $ inds
-        result' = normalise $ applyRewrites result
+    result' <- Eval.normalise $ applyRewrites result
     cxt <- asks (goalContext . Deforest.goal)
     case Var.withinContext result' cxt of
       Nothing -> lift mzero

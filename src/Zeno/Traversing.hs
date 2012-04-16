@@ -26,11 +26,14 @@ class WithinTraversable t f where
   foldWithin :: Monoid m => (t -> m) -> f -> m
   foldWithin g = execWriter . mapWithinM (\t -> tell (g t) >> return t)
   
+  {-
+  Conflicts with TermTraversable list instance
 instance WithinTraversable t f => WithinTraversable t [f] where
   mapWithinM f = mapM (mapWithinM f)
   mapWithin f = map (mapWithin f)
   foldWithin f = foldMap (foldWithin f)
   substitute s = map (substitute s)
+-}
 
 isOneToOne :: Ord b => Substitution a b -> Bool
 isOneToOne = not . containsDuplicates . Map.elems

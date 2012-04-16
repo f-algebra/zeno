@@ -11,6 +11,8 @@ import Zeno.Evaluation ( normalise )
 import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Checker as Checker
 
+import qualified Zeno.Facts as Facts
+import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
@@ -44,8 +46,8 @@ command ("prop", arg) = ZML.readProp arg
 command ("explore", arg) = do
   term <- ZML.readTerm arg
   let raw_term = snd (Term.flattenLam term)
-  potentials <- Checker.explore raw_term
-  mby_context <- runMaybeT $ Checker.guessContext raw_term
+  potentials <- Facts.none $ Checker.explore raw_term
+  mby_context <- Facts.none $ runMaybeT $ Checker.guessContext raw_term
   Zeno.print $ 
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
@@ -58,7 +60,8 @@ command ("explore", arg) = do
       Zeno.print $ "Guessed context: " ++ show (cxt (Term.Var cxt_filler))
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
-  Zeno.print (show (normalise term))
+  term' <- Facts.none $ Eval.normalise term
+  Zeno.print (show term')
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
   term' <- map fromJust $ runMaybeT $ Simplifier.run term
@@ -80,14 +83,13 @@ command ("invent", arg) = do
     case mby_def of
       Nothing -> "Couldn't invent a definition for " ++ func
      -- Just def -> "Found " ++ func ++ " = " ++ show def
--}
 command ("check", arg) = do
   Just prop <- Zeno.lookupProp arg
-  mby_cex <- runMaybeT (Checker.run prop)
+  mby_cex <- Facts.none $ runMaybeT $ Checker.falsify prop
   Zeno.print $ 
     case mby_cex of
       Nothing -> "Could not find counter-example."
-      Just cex -> showSubstitution cex
+      Just cex -> showSubstitution cex -}
 command (other, _) = 
   return () 
   -- error $ "Command \"" ++ other ++ "\" not recognized."

@@ -16,8 +16,8 @@ import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, ZAlt,
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Utils ( orderedSupersetOf )
-import Zeno.Evaluation ( normalise )
 
+import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Facts as Facts
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
@@ -97,8 +97,8 @@ instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
   termList = termList . inductGoal
   
 instance Monad m => Facts.Reader (DeforestT d m) where
-  Facts.ask = asks facts
-  Facts.add fact = local $ \e -> e { facts = facts e ++ [fact] } 
+  ask = asks facts
+  add fact = local $ \e -> e { facts = facts e ++ [fact] } 
   
 traceEnv :: Deforestable d m => String -> DeforestT d m a -> DeforestT d m a
 traceEnv msg cont = do
@@ -114,7 +114,7 @@ traceEnv msg cont = do
 normaliseEnv :: Deforestable d m => DeforestT d m a -> DeforestT d m a
 normaliseEnv cont = do
   env <- ask
-  env' <- normalise env
+  env' <- Eval.normalise env
   local (const env') cont
   
 setGoal :: Deforestable d m => d -> DeforestT d m a -> DeforestT d m a
@@ -238,19 +238,16 @@ doCriticalStep = do
           Induct (substitute rec_sub goal) (Map.insert var rec_var vars)
     
 criticalStep :: Deforestable d m => ZTerm -> MaybeT (DeforestT d m) CriticalStep
-criticalStep orig_term@(Term.flattenApp -> 
-    fix_term@(Term.Fix fix_var fix_rhs) : args) = do
-  bgfacts <- asks facts
-  paths <- asks usedPaths
-  case evaled bgfacts of
-    Term.Cse (Term.FoldCase name _) _ _ 
-      | Set.member [name] paths -> 
-        return (Generalise orig_term)
-    term ->
-      criticalStep term
-  where
-  unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
-  evaled facts = evaluate facts $ Term.unflattenApp (unrolled_fix : args)
+criticalStep term
+  | Term.isFixTerm term = do
+    paths <- asks usedPaths
+    Just unrolled <- Eval.unrollFix term
+    case unrolled of
+      Term.Cse (Term.FoldCase name _) _ _ 
+        | Set.member [name] paths -> 
+          return (Generalise term)
+      unrolled ->
+        criticalStep unrolled
 criticalStep (Term.Cse Term.SplitCase cse_term _) =
   return (SplitStep cse_term)
 criticalStep (Term.Cse (Term.FoldCase name _) cse_term _) =

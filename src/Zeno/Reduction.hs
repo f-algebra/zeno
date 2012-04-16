@@ -41,6 +41,7 @@ import Zeno.Prelude
 import Zeno.Var ( ZEquation, ZClause )
 import Zeno.Evaluation ( normalise )
 import Zeno.Unification ( alphaEq )
+import Zeno.Term ( TermTraversable (..) )
 
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -106,3 +107,5 @@ instance Reducible ZEquation where
     
   reduce other = 
     ReducedTo [other]
+
+  
