@@ -10,10 +10,11 @@ module Zeno.Core (
 import Prelude ()
 import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType,
-                  ZTermSubstitution, ZVar )
+                  ZTermSubstitution, ZVar, ZEquation )
 import Zeno.Unique ( Unique, MonadUnique )
 import Zeno.Show
 
+import qualified Zeno.Facts as Facts
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
@@ -28,6 +29,7 @@ type Zeno = State ZenoState
 
 data ZenoState
   = ZenoState         { uniques :: ![Unique],
+                        facts :: ![ZEquation],
                         theory :: !ZenoTheory,
                         output :: ![String] }
 
@@ -44,7 +46,16 @@ data DiscoveredLemma
                         
 instance MonadUnique (State ZenoState) where
   getStream = unwrapFunctor Unique.getStream
-  putStream = unwrapFunctor . Unique.putStream    
+  putStream = unwrapFunctor . Unique.putStream   
+  
+instance Facts.Reader (State ZenoState) where
+  ask = gets facts
+  local f cont = do
+    s <- get
+    put $ s { facts = f (facts s) }
+    x <- cont
+    put s
+    return x
   
 instance MonadState ZenoState m => MonadUnique (FunctorWrapper m) where
   getStream = wrapFunctor $ 
@@ -61,6 +72,7 @@ instance Empty ZenoTheory where
    
 instance Empty ZenoState where
   empty = ZenoState   { uniques = Unique.stream,
+                        facts = mempty,
                         theory = empty,
                         output = mempty }
 

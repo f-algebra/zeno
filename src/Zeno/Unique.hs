@@ -53,3 +53,7 @@ instance (Error e, MonadUnique m) => MonadUnique (ErrorT e m) where
 instance MonadUnique m => MonadUnique (MaybeT m) where
   getStream = lift getStream
   putStream = lift . putStream
+  
+instance MonadUnique m => MonadUnique (IdentityT m) where
+  getStream = lift getStream
+  putStream = lift . putStream

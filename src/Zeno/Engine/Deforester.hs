@@ -1,7 +1,7 @@
 module Zeno.Engine.Deforester (
   Deforestable (..), Induct (..), DeforestT,
-  deforest, goal, inducts, facts, continue,
-  setGoal, absurd,
+  deforest, goal, inducts, continue,
+  setGoal, absurd, failed, failedIf,
   usableInducts, traceEnv
 ) where
 
@@ -33,25 +33,29 @@ type CriticalPath = [Name]
 
 class ( Ord d, Show d
       , MonadUnique m
+      , Facts.Reader m
       , WithinTraversable ZTerm d
-      , TermTraversable d ZVar ) => Deforestable d m where
+      , TermTraversable d ZVar )
+      => Deforestable d m | m -> d where
+      
   start :: DeforestT d m ZTerm
   induct :: ZTerm -> DeforestT d m ZTerm
   finish :: DeforestT d m ZTerm
+  simplify :: ZTerm -> m (Maybe ZTerm)
 
-deforest :: (MonadUnique m, Deforestable d m) => d -> m ZTerm
+deforest :: Deforestable d m => d -> m (Maybe ZTerm)
 deforest goal = do
   unis <- Unique.getStream
-  mby_res <- runMaybeT $ (runDeforestT startUnfolding) env unis
-  case mby_res of 
-    Nothing -> absurdErr
-    Just (res, unis') -> do
+  out_res <- runDeforestT startUnfolding env unis
+  case out_res of 
+    Absurdity -> absurdErr
+    Failure -> return Nothing
+    Success (res, unis') -> do
       Unique.putStream unis'
-      return res
+      return (Just res)
   where
   env = Env { goal = goal
             , inducts = mempty
-            , facts = mempty
             , usedPaths = mempty
             , nextStep = nextStepErr }
             
@@ -65,7 +69,6 @@ data Induct d
 data Env d m
   = Env       { goal :: !d
               , inducts :: ![Induct d]
-              , facts :: ![ZEquation]
               , usedPaths :: !(Set CriticalPath)
               , nextStep :: DeforestT d m ZTerm }
               
@@ -73,21 +76,17 @@ instance TermTraversable d ZVar => TermTraversable (Env d m) ZVar where
   mapTermsM f env = do
     goal' <- mapTermsM f (goal env)
     inducts' <- mapM (mapTermsM f) (inducts env)
-    facts' <- mapM (mapTermsM f) (facts env)
     return 
       $ env { goal = goal'
-            , inducts = inducts'
-            , facts = facts' }
+            , inducts = inducts' }
 
   mapTerms f env =
     env { goal = mapTerms f (goal env)
-        , inducts = map (mapTerms f) (inducts env)
-        , facts = map (mapTerms f) (facts env) }
+        , inducts = map (mapTerms f) (inducts env) }
         
   termList env = 
     termList (goal env)
     ++ concatMap termList (inducts env)
-    ++ concatMap termList (facts env)
               
 instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
   mapTermsM f (Induct goal vars) =
@@ -95,10 +94,6 @@ instance TermTraversable d ZVar => TermTraversable (Induct d) ZVar where
   mapTerms f (Induct goal vars) = 
     Induct (mapTerms f goal) vars
   termList = termList . inductGoal
-  
-instance Monad m => Facts.Reader (DeforestT d m) where
-  ask = asks facts
-  add fact = local $ \e -> e { facts = facts e ++ [fact] } 
   
 traceEnv :: Deforestable d m => String -> DeforestT d m a -> DeforestT d m a
 traceEnv msg cont = do
@@ -115,7 +110,10 @@ normaliseEnv :: Deforestable d m => DeforestT d m a -> DeforestT d m a
 normaliseEnv cont = do
   env <- ask
   env' <- Eval.normalise env
-  local (const env') cont
+  facts <- Facts.ask
+  facts' <- Eval.normalise facts
+  local (const env') 
+    $ Facts.local (const facts') cont
   
 setGoal :: Deforestable d m => d -> DeforestT d m a -> DeforestT d m a
 setGoal d = local $ \e -> e { goal = d } 
@@ -137,16 +135,6 @@ usableInducts = asks (filter (not . Map.null . inductVars) . inducts)
 
 continue :: Deforestable d m => DeforestT d m ZTerm
 continue = join (asks nextStep)
-
-absurd :: Monad m => DeforestT d m ()
-absurd = DeforestT $ \_ _ -> mzero
-
-catchAbsurdity :: Monad m => DeforestT d m a -> DeforestT d m (Maybe a)
-catchAbsurdity (DeforestT f) = DeforestT $ \env unis -> do
-  mby_x <- lift $ runMaybeT (f env unis)
-  case mby_x of
-    Nothing -> return (Nothing, unis)
-    Just (x, unis') -> return (Just x, unis') 
 
 data CriticalStep
   = SplitStep ZTerm
@@ -174,7 +162,8 @@ doCriticalStep = do
     Just step -> doStep step
     Nothing -> finish >>= induct
   where
-  mapIgnoringAbsurdities :: (a -> DeforestT d m ZAlt) -> [a] -> DeforestT d m [ZAlt]
+  mapIgnoringAbsurdities :: 
+    (a -> DeforestT d m ZAlt) -> [a] -> DeforestT d m [ZAlt]
   mapIgnoringAbsurdities _ [] = return []
   mapIgnoringAbsurdities f (x:xs) = do
    mby_alt <- catchAbsurdity (f x)
@@ -237,7 +226,8 @@ doCriticalStep = do
         genInd (Induct goal vars) = 
           Induct (substitute rec_sub goal) (Map.insert var rec_var vars)
     
-criticalStep :: Deforestable d m => ZTerm -> MaybeT (DeforestT d m) CriticalStep
+criticalStep :: forall d m . Deforestable d m 
+  => ZTerm -> MaybeT (DeforestT d m) CriticalStep
 criticalStep term
   | Term.isFixTerm term = do
     paths <- asks usedPaths
@@ -248,8 +238,14 @@ criticalStep term
           return (Generalise term)
       unrolled ->
         criticalStep unrolled
-criticalStep (Term.Cse Term.SplitCase cse_term _) =
-  return (SplitStep cse_term)
+criticalStep (Term.Cse Term.SplitCase cse_term _)
+  | Term.isFixTerm cse_term = do
+    mby_simpler <- lift . lift $ simplify cse_term 
+    case mby_simpler of
+      Just simpler -> criticalStep simpler
+      Nothing -> return (SplitStep cse_term)
+  | otherwise = 
+    return (SplitStep cse_term)
 criticalStep (Term.Cse (Term.FoldCase name _) cse_term _) =
   local removeName
     $ liftM addToPath
@@ -272,32 +268,62 @@ criticalStep (Term.Var var)
 
 criticalStep other = mzero
 
+data Outcome a
+  = Success a
+  | Failure
+  | Absurdity
+  deriving ( Functor )
 
-newtype DeforestT d m a 
-  = DeforestT { runDeforestT :: Env d m -> [Unique] -> MaybeT m (a, [Unique]) }
+newtype DeforestT d m a = DeforestT { 
+    runDeforestT :: Env d m -> [Unique] -> m (Outcome (a, [Unique])) }
+    
+absurd :: Monad m => DeforestT d m a
+absurd = DeforestT $ \_ _ -> return Absurdity
+
+failed :: Monad m => DeforestT d m a
+failed = DeforestT $ \_ _ -> return Failure
+
+failedIf :: Monad m => Bool -> DeforestT d m ()
+failedIf True = failed
+failedIf False = return ()
+
+catchAbsurdity :: Monad m => DeforestT d m a -> DeforestT d m (Maybe a)
+catchAbsurdity (DeforestT f) = DeforestT $ \env unis -> do
+  out_x <- f env unis
+  case out_x of
+    Absurdity -> return $ Success $ (Nothing, unis)
+    other -> return $ map (first Just) other
   
 instance Monad m => Functor (DeforestT d m) where
   fmap f (DeforestT g) = 
-    DeforestT $ \env unis -> liftM (first f) (g env unis)
+    DeforestT $ \env unis -> liftM (map (first f)) (g env unis)
   
 instance Monad m => Monad (DeforestT d m) where
-  return x = DeforestT $ \_ unis -> return (x, unis)
+  return x = DeforestT $ \_ unis -> return $ Success $ (x, unis)
   DeforestT f >>= g = DeforestT $ \env unis -> do
-    (x, unis') <- f env unis
-    runDeforestT (g x) env unis'
+    out_x <- f env unis
+    case out_x of
+      Success (x, unis') -> runDeforestT (g x) env unis'
+      Failure -> return Failure
+      Absurdity -> return Absurdity
     
 instance Monad m => MonadReader (Env d m) (DeforestT d m) where
-  ask = DeforestT $ \env unis -> return (env, unis)
+  ask = DeforestT $ \env unis -> return $ Success $ (env, unis)
   local f (DeforestT g) = DeforestT $ \env unis -> g (f env) unis
   
 instance Monad m => MonadUnique (DeforestT d m) where
-  getStream = DeforestT $ \_ unis -> return (unis, unis)
-  putStream unis = DeforestT $ \_ _ -> return ((), unis)
+  getStream = DeforestT $ \_ unis -> return $ Success $ (unis, unis)
+  putStream unis = DeforestT $ \_ _ -> return $ Success $ ((), unis)
+  
+instance Deforestable d m => Facts.Reader (DeforestT d m) where
+  ask = lift Facts.ask
+  local f df = DeforestT $ \env unis ->
+    Facts.local f $ runDeforestT df env unis
   
 instance MonadTrans (DeforestT d) where
   lift m = DeforestT $ \env unis -> do
-    x <- lift m
-    return (x, unis)
+    x <- m
+    return $ Success $ (x, unis)
 
 instance Show d => Show (Induct d) where
   show (Induct ind vars) = show ind

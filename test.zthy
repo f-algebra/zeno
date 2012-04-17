@@ -44,6 +44,18 @@ let rec (leq : nat -> nat -> bool) =
           0 -> false
         | succ y' -> leq x' y';
         
+let rec (eq : nat -> nat -> bool) =
+  fun (x : nat) (y : nat) ->
+    case x of
+    | 0 ->
+        (case y of
+        | 0 -> true
+        | succ y' -> false)
+    | succ x' ->
+        case y of 
+        | 0 -> false
+        | succ y' -> eq y' x';
+        
 let rec (len : list -> nat) = 
   fun (xs : list) ->
     case xs of
@@ -86,7 +98,15 @@ let rec (drop : nat -> list -> list) =
         | nil -> nil
         | cons y ys -> drop m ys;
     
-    
+let rec (elem : nat -> list -> bool) = 
+  fun (n : nat) (xs : list) ->
+    case xs of
+    | nil -> false
+    | cons y ys -> 
+        case (eq n y) of
+        | true -> true
+        | false -> elem n ys;
+        
 prop add_0 =
   all (x : nat) -> add x 0 = x;
   
@@ -110,6 +130,12 @@ simplify
   
 simplify
   fun (x : nat) (y : nat) (z : nat) -> mul x (succ 0);
+  
+simplify 
+  fun (x : nat) -> eq x x;
+  
+simplify 
+  fun (x : nat) (xs : list) -> elem x (app xs (cons x nil));
   
 check meep;
 

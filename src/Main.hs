@@ -64,7 +64,7 @@ command ("evaluate", arg) = do
   Zeno.print (show term')
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
-  term' <- map fromJust $ runMaybeT $ Simplifier.run term
+  term' <- map fromJust $ Simplifier.run term
   Zeno.print (showWithDefinitions term')
 {-
   Zeno.print $

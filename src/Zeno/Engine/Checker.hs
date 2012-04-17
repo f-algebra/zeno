@@ -1,6 +1,6 @@
 module Zeno.Engine.Checker (
   ZCounterExample,
-  falsify, explore, guessContext, inconsistent
+  falsify, explore, guessContext, inconsistent, alwaysMatches
 ) where
 
 import Prelude ()
@@ -23,6 +23,8 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Evaluation as Eval
+
+import qualified Data.Set as Set
 import qualified Data.Map as Map
 
 type ZCounterExample = Substitution ZVar ZTerm
@@ -64,8 +66,8 @@ inconsistent = invalid maxDepth [] =<< Facts.ask
         ReducedTo eqs' -> invalid depth other_vars eqs'
   
 data Explored
-  = Explored  { exploredValue :: !ZTerm
-              , exploredMatches :: ![ZTerm] }
+  = Explored  { exploredValue :: ZTerm
+              , exploredMatches :: [ZTerm] }
   deriving ( Eq, Ord )
               
 instance TermTraversable Explored ZVar where
@@ -125,9 +127,19 @@ explore term = do
       where
       new_fact = Logic.Equal ct_term con_term
 
+alwaysMatches :: (Facts.Reader m, MonadUnique m) => ZTerm -> m [ZTerm]
+alwaysMatches term = do
+  matches <- liftM (map exploredMatches) 
+           $ explore term
+  return
+    $ Set.toList
+    $ foldl1 Set.intersection
+    $ map Set.fromList matches
+
 guessContext :: (Facts.Reader m, MonadUnique m) => ZTerm -> m Var.Context
 guessContext term = do
-  potentials <- liftM (map exploredValue) $ explore term
+  potentials <- liftM (map exploredValue) 
+              $ explore term
   if null potentials
   then return idContext
   else do
