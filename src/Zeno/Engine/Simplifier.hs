@@ -113,7 +113,7 @@ instance (MonadUnique m, Facts.Reader m)
       Term.reannotate
       $ Context.function cxt
       $ Term.unflattenApp (new_fix : map Term.Var used_vars)
-    Deforest.failedIf (traceMe (show new_goal ++ " =a " ++ show goal) $ new_goal `alphaEq` goal)
+    Deforest.failedIf (new_goal `alphaEq` goal)
     return new_goal
     where
     removeUnusedVarCall :: ZVar -> ZVar -> ZTerm -> ZTerm
@@ -134,7 +134,7 @@ instance (MonadUnique m, Facts.Reader m)
     result' <- Eval.normalise $ applyRewrites result
     cxt <- asks (goalContext . Deforest.goal)
     case Context.within result' cxt of
-      Nothing -> trace (show result' ++ " notin " ++ show cxt) $ Deforest.failed
+      Nothing -> Deforest.failed
       Just inner_term -> return inner_term
     where
     applyInduct :: Induct SimplifyGoal -> ZTerm -> ZTerm
