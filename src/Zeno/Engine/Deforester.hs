@@ -113,7 +113,8 @@ normaliseEnv cont = do
   facts <- Facts.ask
   facts' <- Eval.normalise facts
   local (const env') 
-    $ Facts.local (const facts') cont
+    $ Facts.local (const facts') 
+    $ cont
   
 setGoal :: Deforestable d m => d -> DeforestT d m a -> DeforestT d m a
 setGoal d = local $ \e -> e { goal = d } 
@@ -192,11 +193,15 @@ doCriticalStep = do
     new_var <- Var.generalise gen_term
     let do_gen = substitute $ Map.singleton gen_term (Term.Var new_var)
         un_gen = substitute $ Map.singleton (Term.Var new_var) gen_term
-    result <- fmap un_gen
+    mby_result <-
+      catchFailure
+      $ fmap un_gen
       $ local do_gen
       $ startUnfolding
-    induct result
-        
+    case mby_result of
+      Nothing -> finish >>= induct
+      Just result -> induct result
+      
   doStep (InductStep var path) = do
     cons <- Var.caseSplit dtype
     branches <- addPath path 
@@ -238,18 +243,23 @@ criticalStep term
           return (Generalise term)
       unrolled ->
         criticalStep unrolled
-criticalStep (Term.Cse Term.SplitCase cse_term _)
-  | Term.isFixTerm cse_term = do
-    mby_simpler <- lift . lift $ simplify cse_term 
+criticalStep cse_term@(Term.Cse Term.SplitCase cse_of _)
+  | Term.isFixTerm cse_of = do
+    mby_simpler <- lift . lift $ simplify cse_of 
     case mby_simpler of
-      Just simpler -> criticalStep simpler
-      Nothing -> return (SplitStep cse_term)
+      Just cse_of' 
+        | Var.isConstructorTerm cse_of' -> do
+          normal <- Eval.normalise
+                  $ cse_term { Term.caseOfTerm = cse_of' }
+          criticalStep normal
+      otherwise ->
+        return (SplitStep cse_of)
   | otherwise = 
     return (SplitStep cse_term)
-criticalStep (Term.Cse (Term.FoldCase name _) cse_term _) =
+criticalStep (Term.Cse (Term.FoldCase name _) cse_of _) =
   local removeName
     $ liftM addToPath
-    $ criticalStep cse_term
+    $ criticalStep cse_of
   where
   removeName :: Env d m -> Env d m
   removeName env = env { usedPaths = Set.map remove (usedPaths env) }
@@ -294,6 +304,13 @@ catchAbsurdity (DeforestT f) = DeforestT $ \env unis -> do
     Absurdity -> return $ Success $ (Nothing, unis)
     other -> return $ map (first Just) other
   
+catchFailure :: Monad m => DeforestT d m a -> DeforestT d m (Maybe a)
+catchFailure (DeforestT f) = DeforestT $ \env unis -> do
+  out_x <- f env unis
+  case out_x of
+    Failure -> return $ Success $ (Nothing, unis)
+    other -> return $ map (first Just) other
+    
 instance Monad m => Functor (DeforestT d m) where
   fmap f (DeforestT g) = 
     DeforestT $ \env unis -> liftM (map (first f)) (g env unis)

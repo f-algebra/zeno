@@ -4,14 +4,13 @@ module Zeno.Var (
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
   ZClause, ZTermSubstitution, ZEquation,
-  Context (..), setType,
+  setType, caseSplit, relabel,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
   new, declare, invent, clone, generalise,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
-  caseSplit, withinContext,
   destructible, isHNF
 ) where
 
@@ -57,10 +56,6 @@ instance Ord ZVar where
 data ZVarSort
   = Constructor
   | Universal
-  
-data Context
-  = Context   { contextFunction :: !(ZTerm -> ZTerm),
-                contextArgType :: !ZType }
                 
 instance Empty ZVar where
   empty = Var empty empty Universal
@@ -68,9 +63,6 @@ instance Empty ZVar where
 instance Typed ZVar where
   type SimpleType ZVar = ZDataType
   typeOf = varType
-  
-instance Show ZVar where
-  show = show . name 
 
 setType :: ZVar -> ZType -> ZVar
 setType var typ = var { varType = typ }
@@ -127,16 +119,7 @@ destructible term =
   && not (isConstructorTerm term)
   && not (Term.isCse term)
   
-withinContext :: ZTerm -> Context -> Maybe ZTerm
-withinContext term (Context cxt_func _) = 
-  case unifier (cxt_func empty) term of
-    NoUnifier -> Nothing
-    Unifier sub ->
-      case Map.toList sub of
-        [(key, context_gap)] | key == empty ->
-          Just context_gap
-        _ -> 
-          Nothing
+
   
 recursiveArguments :: ZTerm -> [ZTerm]
 recursiveArguments term 
@@ -163,6 +146,9 @@ invent = new Nothing
 clone :: MonadUnique m => ZVar -> m ZVar
 clone var = declare (show (name var)) (varType var) (sort var)
 
+relabel :: String -> ZVar -> ZVar
+relabel lbl var = var { name = Name.relabel lbl (name var) }
+
 universalVariables :: Foldable f => f ZVar -> Set ZVar
 universalVariables = Set.filter isUniversal . Set.fromList . toList
 
@@ -178,4 +164,6 @@ foldUniversal f = foldWithin foldVars
   foldVars (Term.Var x) = f x
   foldVars _ = mempty
   
+instance Show ZVar where
+  show = show . name 
 

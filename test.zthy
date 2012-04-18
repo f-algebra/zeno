@@ -121,10 +121,7 @@ let rec (app1 : list -> nat -> list) =
     case xs of
     | nil -> cons x nil
     | cons y ys -> cons y (app1 ys x);
-    
-simplify 
-  fun (xs : list) -> rev (rev xs);
-  
+   
 simplify 
   fun (xs : list) -> len (rev xs);
   
@@ -136,6 +133,9 @@ simplify
   
 simplify 
   fun (x : nat) (xs : list) -> elem x (app xs (cons x nil));
-  
-check meep;
+    
+simplify 
+  fun (xs : list) -> rev (rev xs);
+
+
 

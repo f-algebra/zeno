@@ -1,6 +1,6 @@
 module Zeno.Name (
   Name, MonadUnique, Unique,
-  new, clone, invent, declare, label
+  new, clone, invent, declare, label, relabel
 ) where
 
 import Prelude ()
@@ -34,6 +34,9 @@ new mby_label = do
   uni <- Unique.new
   let label = maybe ("?" ++ show uni) id mby_label
   return (Name uni label)
+  
+relabel :: String -> Name -> Name
+relabel lbl (Name id _) = Name id lbl
   
 instance Empty Name where
   empty = Name mempty "NULL"

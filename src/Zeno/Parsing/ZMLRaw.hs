@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
+{-# OPTIONS_GHC -w #-}
 module Zeno.Parsing.ZMLRaw ( 
   RTypeDef (..), RVar (..), RProp,
   RType, RTerm, RAlt, RClause, REquation,
@@ -16,7 +16,7 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Type as Type
 import qualified Zeno.Name as Name
 
--- parser produced by Happy Version 1.18.4
+-- parser produced by Happy Version 1.18.6
 
 data HappyAbsSyn 
 	= HappyTerminal (Token)
@@ -1041,7 +1041,7 @@ instance Show RTypeDef where
 {-# LINE 1 "templates/GenericTemplate.hs" #-}
 -- Id: GenericTemplate.hs,v 1.26 2005/01/14 14:47:22 simonmar Exp 
 
-{-# LINE 28 "templates/GenericTemplate.hs" #-}
+{-# LINE 30 "templates/GenericTemplate.hs" #-}
 
 
 
@@ -1050,11 +1050,11 @@ instance Show RTypeDef where
 
 
 
-{-# LINE 49 "templates/GenericTemplate.hs" #-}
+{-# LINE 51 "templates/GenericTemplate.hs" #-}
 
-{-# LINE 59 "templates/GenericTemplate.hs" #-}
+{-# LINE 61 "templates/GenericTemplate.hs" #-}
 
-{-# LINE 68 "templates/GenericTemplate.hs" #-}
+{-# LINE 70 "templates/GenericTemplate.hs" #-}
 
 infixr 9 `HappyStk`
 data HappyStk a = HappyStk a (HappyStk a)
@@ -1078,7 +1078,7 @@ happyAccept j tk st sts (HappyStk ans _) =
 -----------------------------------------------------------------------------
 -- Arrays only: do the next action
 
-{-# LINE 155 "templates/GenericTemplate.hs" #-}
+{-# LINE 148 "templates/GenericTemplate.hs" #-}
 
 -----------------------------------------------------------------------------
 -- HappyState data type (not arrays)
@@ -1099,7 +1099,7 @@ newtype HappyState b c = HappyState
 -- Shifting a token
 
 happyShift new_state (1) tk st sts stk@(x `HappyStk` _) =
-     let i = (case x of { HappyErrorToken (i) -> i }) in
+     let (i) = (case x of { HappyErrorToken (i) -> i }) in
 --     trace "shifting the error token" $
      new_state i i tk (HappyState (new_state)) ((st):(sts)) (stk)
 
@@ -1143,14 +1143,14 @@ happyMonadReduce k nt fn (1) tk st sts stk
      = happyFail (1) tk st sts stk
 happyMonadReduce k nt fn j tk st sts stk =
         happyThen1 (fn stk tk) (\r -> action nt j tk st1 sts1 (r `HappyStk` drop_stk))
-       where sts1@(((st1@(HappyState (action))):(_))) = happyDrop k ((st):(sts))
+       where (sts1@(((st1@(HappyState (action))):(_)))) = happyDrop k ((st):(sts))
              drop_stk = happyDropStk k stk
 
 happyMonad2Reduce k nt fn (1) tk st sts stk
      = happyFail (1) tk st sts stk
 happyMonad2Reduce k nt fn j tk st sts stk =
        happyThen1 (fn stk tk) (\r -> happyNewToken new_state sts1 (r `HappyStk` drop_stk))
-       where sts1@(((st1@(HappyState (action))):(_))) = happyDrop k ((st):(sts))
+       where (sts1@(((st1@(HappyState (action))):(_)))) = happyDrop k ((st):(sts))
              drop_stk = happyDropStk k stk
 
 
@@ -1169,7 +1169,7 @@ happyDropStk n (x `HappyStk` xs) = happyDropStk (n - ((1)::Int)) xs
 -----------------------------------------------------------------------------
 -- Moving to a new state after a reduction
 
-{-# LINE 253 "templates/GenericTemplate.hs" #-}
+{-# LINE 246 "templates/GenericTemplate.hs" #-}
 happyGoto action j tk st = action j j tk (HappyState action)
 
 
@@ -1200,6 +1200,7 @@ happyFail  i tk (HappyState (action)) sts stk =
 
 -- Internal happy errors:
 
+notHappyAtAll :: a
 notHappyAtAll = error "Internal Happy error\n"
 
 -----------------------------------------------------------------------------
@@ -1226,7 +1227,7 @@ happyDontSeq a b = b
 -- of deciding to inline happyGoto everywhere, which increases the size of
 -- the generated parser quite a bit.
 
-{-# LINE 317 "templates/GenericTemplate.hs" #-}
+{-# LINE 311 "templates/GenericTemplate.hs" #-}
 {-# NOINLINE happyShift #-}
 {-# NOINLINE happySpecReduce_0 #-}
 {-# NOINLINE happySpecReduce_1 #-}

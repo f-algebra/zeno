@@ -47,25 +47,25 @@ command ("explore", arg) = do
   term <- ZML.readTerm arg
   let raw_term = snd (Term.flattenLam term)
   potentials <- Facts.none $ Checker.explore raw_term
-  mby_context <- Facts.none $ runMaybeT $ Checker.guessContext raw_term
+  cxt <- Facts.none $ Checker.guessContext raw_term
+  matches <- Facts.none $ Checker.independentMatches raw_term
   Zeno.print $ 
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
-  case mby_context of
-    Nothing -> return () {-
-    Just (Var.Constant kterm) -> 
-      Zeno.print $ "Guessed constant term: " ++ show kterm -}
-    Just (Var.Context cxt typ) -> do
-      cxt_filler <- Var.declare ("{" ++ show typ ++ "}") typ Var.Universal
-      Zeno.print $ "Guessed context: " ++ show (cxt (Term.Var cxt_filler))
+  Zeno.print $ "Guessed context: " ++ show cxt
+  Zeno.print $ "Independent matches: " ++ show matches
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   term' <- Facts.none $ Eval.normalise term
   Zeno.print (show term')
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
-  term' <- map fromJust $ Simplifier.run term
-  Zeno.print (showWithDefinitions term')
+  mby_simpler <- Simplifier.run term
+  Zeno.print $ 
+    case mby_simpler of
+      Nothing -> "Simplification failed: " ++ show term
+      Just simpler -> "Simplified: " ++ show term 
+        ++ "\n\n" ++ (showWithDefinitions simpler)
 {-
   Zeno.print $
     case term' of

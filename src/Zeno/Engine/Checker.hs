@@ -1,6 +1,6 @@
 module Zeno.Engine.Checker (
   ZCounterExample,
-  falsify, explore, guessContext, inconsistent, alwaysMatches
+  falsify, explore, guessContext, inconsistent, independentMatches
 ) where
 
 import Prelude ()
@@ -9,12 +9,14 @@ import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Core ( ZenoState )
 import Zeno.Unique ( MonadUnique )
+import Zeno.Context ( Context )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
                   ZVar, ZTermSubstitution, ZEquation )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Reduction
 import Zeno.Type ( typeOf )
 
+import qualified Zeno.Context as Context
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
 import qualified Zeno.Logic as Logic
@@ -127,16 +129,19 @@ explore term = do
       where
       new_fact = Logic.Equal ct_term con_term
 
-alwaysMatches :: (Facts.Reader m, MonadUnique m) => ZTerm -> m [ZTerm]
-alwaysMatches term = do
+independentMatches :: (Facts.Reader m, MonadUnique m) => ZTerm -> m [ZTerm]
+independentMatches term = do
   matches <- liftM (map exploredMatches) 
            $ explore term
   return
+    $ filter (\t -> Var.freeZVars t `Set.isSubsetOf` free_vars) 
     $ Set.toList
-    $ foldl1 Set.intersection
+    $ Set.unions
     $ map Set.fromList matches
+  where
+  free_vars = Var.freeZVars term
 
-guessContext :: (Facts.Reader m, MonadUnique m) => ZTerm -> m Var.Context
+guessContext :: (Facts.Reader m, MonadUnique m) => ZTerm -> m Context
 guessContext term = do
   potentials <- liftM (map exploredValue) 
               $ explore term
@@ -145,16 +150,14 @@ guessContext term = do
   else do
     let (p:ps) = potentials
     if all (alphaEq p) ps
-    then return idContext --return (Constant p)
+    then return (Context.new (const p) empty)
     else 
       case matchContext potentials of
         Nothing -> return idContext
-        Just (context, gap_type) -> return (Var.Context context gap_type)
+        Just (context, gap_type) -> return (Context.new context gap_type)
   where
-  idContext :: Var.Context
-  idContext = 
-    Var.Context { Var.contextFunction = id
-                , Var.contextArgType = typeOf term }
+  idContext :: Context
+  idContext = Context.new id (typeOf term)
   
   matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm, ZType)
   matchContext terms = do
@@ -162,9 +165,10 @@ guessContext term = do
     guard (all (== fst_con) other_cons)
     assert (not $ null gap_is) $ return ()
     guard (length gap_is == 1)
-    Just $ case matchContext gaps of
-      Nothing -> (context, gap_type)
-      Just (inner_context, inner_type) -> (context . inner_context, inner_type)
+    return $
+      case matchContext gaps of
+        Nothing -> (context, gap_type)
+        Just (inner_context, inner_type) -> (context . inner_context, inner_type)
     where
     flattened = map Term.flattenApp terms
     (fst_con:other_cons) = map head flattened
