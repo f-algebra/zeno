@@ -124,7 +124,7 @@ eval other = do
     else do
       let unrolled_fix = replaceWithin (Term.Var fix_var) fix_term fix_rhs
       unrolled <- evalApp (unrolled_fix : args)
-      if not (Term.isNormal unrolled)
+      if not (Term.isCaseNormal unrolled)
       then did_nothing
       else eval unrolled
   evalApp app = 

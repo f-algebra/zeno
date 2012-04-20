@@ -5,7 +5,7 @@ module Zeno.Term (
   TermTraversable (..),
   isVar, fromVar, isApp, isCse, isLam, isFix, isFoldCase,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
-  function, isNormal, isFixTerm,
+  function, isNormal, isCaseNormal, isFixTerm,
   caseSortFix, reannotate, freshenCaseSort
 ) where
 
@@ -148,8 +148,11 @@ freshenCaseSort (FoldCase name fix) = do
   new_name <- Name.clone name
   return (FoldCase new_name fix)
 
-isNormal :: forall a . Ord a => Term a -> Bool
-isNormal = Set.null . freeFixes
+isNormal :: Ord a => Term a -> Bool
+isNormal = anyWithin isFix
+
+isCaseNormal :: forall a . Ord a => Term a -> Bool
+isCaseNormal = Set.null . freeFixes
   where
   freeFixes :: Term a -> Set a
   freeFixes (Var _) = mempty

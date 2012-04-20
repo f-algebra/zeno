@@ -1,5 +1,6 @@
 module Zeno.Unique (
-  Unique, MonadUnique (..), stream, new
+  Unique, MonadUnique (..), 
+  stream, new, global
 ) where
 
 import Prelude ()
@@ -21,6 +22,18 @@ new = do
   putStream rest
   return fst
   
+globalStream :: IORef [Unique]
+globalStream
+  = unsafePerformIO 
+  $ newIORef 
+  $ map Unique [-1,-2..]
+  
+-- | Take a new globally unique identitfier
+global :: IO Unique
+global 
+  = atomicModifyIORef globalStream
+  $ \s -> (tail s, head s) 
+
 instance Show Unique where
   show = intToChars . run
     where

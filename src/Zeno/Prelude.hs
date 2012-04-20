@@ -39,7 +39,7 @@ module Zeno.Prelude
   (++), concat, intercalate, map, void,
   concatMap, concatMapM, partitionM, concatEndos,
   fromJustT, anyM, allM, findM, sortWith,
-  minimalBy, nubOrd, elemOrd, intersectOrd,
+  minimalBy, nubOrd, elemOrd, intersectOrd, countOrd,
   fromRight, fromLeft, traceMe, setAt, firstM,
   wrapFunctor, unwrapFunctor, FunctorWrapper
 )
@@ -175,6 +175,16 @@ nubOrd = Set.toList . Set.fromList
   
 elemOrd :: Ord a => a -> [a] -> Bool
 elemOrd x = Set.member x . Set.fromList
+
+countOrd :: Ord a => a -> [a] -> Int
+countOrd n = count . sort
+  where
+  count [] = 0
+  count (x:xs) =
+    case x `compare` n of
+      LT -> count xs
+      EQ -> 1 + (count xs)
+      GT -> 0
 
 intersectOrd :: Ord a => [a] -> [a] -> [a]
 intersectOrd xs ys = Set.toList 

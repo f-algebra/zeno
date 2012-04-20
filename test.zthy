@@ -122,19 +122,19 @@ let rec (app1 : list -> nat -> list) =
     | nil -> cons x nil
     | cons y ys -> cons y (app1 ys x);
    
-simplify 
+implify 
   fun (xs : list) -> len (rev xs);
   
-simplify
+implify
   fun (x : nat) (y : nat) (z : nat) -> mul x (succ 0);
   
-simplify 
+implify 
   fun (x : nat) -> eq x x;
   
 simplify 
-  fun (x : nat) (xs : list) -> elem x (app xs (cons x nil));
+  fun (x : nat) (xs : list) -> rev (app xs (cons x nil));
     
-simplify 
+implify 
   fun (xs : list) -> rev (rev xs);
 
 

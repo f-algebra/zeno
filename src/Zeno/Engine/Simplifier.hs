@@ -55,13 +55,18 @@ instance Ord SimplifyGoal where
 
 instance TermTraversable SimplifyGoal ZVar where
   mapTermsM f goal = do
-    simp' <- f (simplifyMe goal)
-    repl' <- f (replaceWithMe goal)
-    return $ goal { simplifyMe = simp', replaceWithMe = repl' }
+    simp <- f (simplifyMe goal)
+    repl <- f (replaceWithMe goal)
+    cxt <- mapTermsM f (goalContext goal)
+    return 
+      $ goal { simplifyMe = simp
+             , replaceWithMe = repl
+             , goalContext = cxt }
 
   mapTerms f goal =
     goal { simplifyMe = f (simplifyMe goal)
-         , replaceWithMe = f (replaceWithMe goal) }
+         , replaceWithMe = f (replaceWithMe goal)
+         , goalContext = mapTerms f (goalContext goal) }
 
   -- | While replaceWithMe can be modified it should not be accessed
   termList = 
@@ -93,16 +98,20 @@ instance (MonadUnique m, Facts.Reader m)
   start = do
     goal <- asks (simplifyMe . Deforest.goal)
     cxt <- Checker.guessContext goal
+    trace ("start: " ++ show goal ++ " <= " ++ show cxt) (return ())
     let free_vars = (Set.toList . Var.freeZVars) goal
         var_types = map typeOf free_vars
-        fun_type = Type.unflatten (var_types ++ [Context.argType cxt])
+        fun_type = Type.unflatten (var_types ++ [Context.fillType cxt])
     new_fun <- Var.declare ("[" ++ show goal ++ "]") fun_type Var.Universal
-    let new_term = Context.function cxt
+    let new_term = Context.fill cxt
                  $ Term.unflattenApp 
                  $ map Term.Var (new_fun : free_vars) 
     inner_term <- setReplaceWith new_term 
                 $ setContext cxt
                 $ Deforest.continue
+    Deforest.failedIf 
+      $ not (Term.isNormal inner_term) 
+      && not (new_fun `Set.member` Var.freeZVars inner_term) 
     let (used_vars, unused_vars) = partition (flip recursedOnVar inner_term) free_vars
         removeUnusedVarCalls = concatEndos 
                              $ map (removeUnusedVarCall new_fun) unused_vars
@@ -111,7 +120,7 @@ instance (MonadUnique m, Facts.Reader m)
                 $ removeUnusedVarCalls inner_term
     new_goal <- 
       Term.reannotate
-      $ Context.function cxt
+      $ Context.fill cxt
       $ Term.unflattenApp (new_fix : map Term.Var used_vars)
     Deforest.failedIf (new_goal `alphaEq` goal)
     return new_goal
@@ -125,16 +134,19 @@ instance (MonadUnique m, Facts.Reader m)
         = fun_term
       remove other = other
 
-  finish =
-    asks (simplifyMe . Deforest.goal)
-        
+  finish = do
+    goal <- asks (simplifyMe . Deforest.goal)
+    trace ("finish: " ++  show goal)
+      $ return goal
+   
   induct result = do
     inds <- Deforest.usableInducts
     let applyRewrites = appEndo . concatMap (Endo . applyInduct) $ inds
     result' <- Eval.normalise $ applyRewrites result
     cxt <- asks (goalContext . Deforest.goal)
-    case Context.within result' cxt of
-      Nothing -> Deforest.failed
+    trace ("induct on: " ++ show result ++ " ==> " ++ show result' ++ " <=? " ++ show cxt) (return ())
+    case Context.matches cxt result' of
+      Nothing -> trace (show result' ++ " =/= " ++ show cxt) $ Deforest.failed
       Just inner_term -> return inner_term
     where
     applyInduct :: Induct SimplifyGoal -> ZTerm -> ZTerm

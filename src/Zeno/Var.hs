@@ -11,7 +11,7 @@ module Zeno.Var (
   new, declare, invent, clone, generalise,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
-  destructible, isHNF
+  destructible, isHNF, magic
 ) where
 
 import Prelude ()
@@ -119,8 +119,6 @@ destructible term =
   && not (isConstructorTerm term)
   && not (Term.isCse term)
   
-
-  
 recursiveArguments :: ZTerm -> [ZTerm]
 recursiveArguments term 
   | not (Term.isApp term) = []
@@ -131,11 +129,16 @@ recursiveArguments term
 
 generalise :: MonadUnique m => ZTerm -> m ZVar
 generalise term = invent (typeOf term) Universal
-  
+
 new :: MonadUnique m => Maybe String -> ZType -> ZVarSort -> m ZVar
 new label typ srt = do
   name <- Name.new label
   return (Var name typ srt)
+  
+-- | Makes a new magic variable which can have any type 
+-- and will be globally unique. This function is unsafe.
+magic :: String -> ZVar
+magic lbl = Var (Name.unsafe lbl) empty Universal 
   
 declare :: MonadUnique m => String -> ZType -> ZVarSort -> m ZVar
 declare = new . Just  

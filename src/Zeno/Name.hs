@@ -1,6 +1,7 @@
 module Zeno.Name (
   Name, MonadUnique, Unique,
-  new, clone, invent, declare, label, relabel
+  new, clone, invent, declare, label, relabel,
+  global, unsafe
 ) where
 
 import Prelude ()
@@ -28,7 +29,16 @@ invent = new Nothing
 
 declare :: MonadUnique m => String -> m Name
 declare = new . Just
-  
+
+global :: Maybe String -> IO Name
+global mby_lbl = do
+  uni <- Unique.global
+  let lbl = maybe ("?" ++ show uni) id mby_lbl
+  return (Name uni lbl)
+
+unsafe :: String -> Name
+unsafe = unsafePerformIO . global . Just
+
 new :: MonadUnique m => Maybe String -> m Name
 new mby_label = do
   uni <- Unique.new
