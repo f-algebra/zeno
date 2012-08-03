@@ -5,8 +5,9 @@ module Zeno.Term (
   TermTraversable (..),
   isVar, fromVar, isApp, isCse, isLam, isFix, isFoldCase,
   flattenApp, unflattenApp, flattenLam, unflattenLam,
-  function, isNormal, isCaseNormal, isFixTerm,
-  caseSortFix, reannotate, freshenCaseSort
+  function, isNormal, isCaseNormal, isFixTerm, 
+  caseSortFix, reannotate, freshenCaseSort, 
+  etaReduce, mapCaseBranchesM
 ) where
 
 import Prelude ()
@@ -187,6 +188,19 @@ flattenLam expr = ([], expr)
 unflattenLam :: [a] -> Term a -> Term a
 unflattenLam = flip (foldr Lam)
 
+etaReduce :: Eq a => Term a -> Term a
+etaReduce (Lam x (App f y))
+  | (Var x) == y = etaReduce f
+etaReduce other = other
+
+mapCaseBranchesM :: Monad m => (Term a -> m (Term a)) -> Term a -> m (Term a)
+mapCaseBranchesM f (Cse srt cse_of alts) =
+  Cse srt cse_of `liftM` mapM mapAltM alts
+  where
+  mapAltM (Alt con vars term) = 
+    Alt con vars `liftM` mapCaseBranchesM f term
+mapCaseBranchesM f other = f other
+    
 -- | Resets all the 'CaseSort' annotations within a term.
 -- Only run this on top-level terms, if you are within 'Fix'ed variables
 -- this could cause inconsistency.

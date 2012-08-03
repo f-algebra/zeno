@@ -1,7 +1,8 @@
 -- | Single hole 'Term' contexts
 module Zeno.Context (
-  Context,
-  new, fill, fillType, matches
+  Context, contextTerm,
+  new, fill, fillType, matches, 
+  compose, identity
 ) where
 
 import Prelude ()
@@ -35,6 +36,13 @@ new func typ =
   assert (valid cxt) cxt
   where
   cxt = Context (func gapTerm) typ
+  
+identity :: ZType -> Context
+identity = new id
+
+compose :: Context -> Context -> Context
+compose left right = 
+  Context (fill left (contextTerm right)) (fillType right)
 
 fill :: Context -> ZTerm -> ZTerm
 fill cxt filler = 
@@ -54,7 +62,7 @@ matches (Context cxt_term _) match_term =
         [(key, context_gap)] 
           | key == gap -> Just context_gap
         _ -> Nothing
-        
+
 instance TermTraversable Context ZVar where
   mapTermsM f (Context term typ) = 
     return Context `ap` f term `ap` return typ

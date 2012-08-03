@@ -13,6 +13,7 @@ import Zeno.Var ( ZTerm, ZClause, ZDataType,
                   ZTermSubstitution, ZVar, ZEquation )
 import Zeno.Unique ( Unique, MonadUnique )
 import Zeno.Show
+import Zeno.Simplifier ( simplify )
 
 import qualified Zeno.Facts as Facts
 import qualified Zeno.Name as Name
@@ -84,8 +85,12 @@ defineType dtype = modifyTheory $ \z -> z
   { types = Map.insert (Name.label . DataType.name $ dtype) dtype (types z) }
       
 defineTerm :: MonadState ZenoState m => String -> ZTerm -> m ()
-defineTerm name expr = modifyTheory $ \z -> z
-  { terms = Map.insert name expr (terms z) }
+defineTerm name expr = do
+  expr' <- unwrapFunctor 
+    $ liftM (fromMaybe expr)
+    $ simplify expr 
+  modifyTheory $ \z -> z
+    { terms = Map.insert name expr' (terms z) }
   
 defineProp :: MonadState ZenoState m => String -> ZClause -> m ()
 defineProp name cls = modifyTheory $ \z -> z

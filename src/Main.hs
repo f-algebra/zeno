@@ -7,6 +7,7 @@ import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Var ( ZTerm )
 import Zeno.Show
 import Zeno.Evaluation ( normalise )
+import Zeno.Simplifier ( simplify )
 
 import qualified Zeno.Engine.Simplifier as Simplifier
 import qualified Zeno.Engine.Checker as Checker

@@ -44,6 +44,15 @@ let rec (leq : nat -> nat -> bool) =
           0 -> false
         | succ y' -> leq x' y';
         
+let rec (filter : (nat -> bool) -> list -> list) =
+  fun (p : (nat -> bool)) (xs : list) ->
+    case xs of
+    | nil -> nil
+    | cons y ys -> 
+        case (p y) of
+        | true -> cons y (filter p ys)
+        | false -> filter p ys;
+        
 let rec (eq : nat -> nat -> bool) =
   fun (x : nat) (y : nat) ->
     case x of
@@ -122,20 +131,7 @@ let rec (app1 : list -> nat -> list) =
     | nil -> cons x nil
     | cons y ys -> cons y (app1 ys x);
    
-implify 
-  fun (xs : list) -> len (rev xs);
+evaluate 
+  fun (p : nat -> bool) (xs : list) (x : nat) -> 
+    filter p (cons x xs);
   
-implify
-  fun (x : nat) (y : nat) (z : nat) -> mul x (succ 0);
-  
-implify 
-  fun (x : nat) -> eq x x;
-  
-simplify 
-  fun (x : nat) (xs : list) -> rev (app xs (cons x nil));
-    
-implify 
-  fun (xs : list) -> rev (rev xs);
-
-
-
