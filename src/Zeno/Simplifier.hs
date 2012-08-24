@@ -1,11 +1,13 @@
 module Zeno.Simplifier  (
-  simplify
+  simplify,
+  
+  test_extractInnermost1
 ) where
 
 import Prelude ()
 import Zeno.Prelude
 import Zeno.Traversing
-import Zeno.Unification
+import Zeno.Unification 
 import Zeno.Name ( Name )
 import Zeno.Unique ( MonadUnique, Unique )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, ZAlt,
@@ -15,6 +17,7 @@ import Zeno.Term ( TermTraversable (..) )
 import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
 
+import qualified Zeno.Facts as Facts
 import qualified Zeno.Evaluation as Eval
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
@@ -22,6 +25,7 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Unique as Unique
 import qualified Zeno.Context as Context
+import qualified Zeno.Testing as Test
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -50,7 +54,7 @@ deforest term = do
   
   -- The inner term with the 'Term.Fix' of the leftmost function removed
   -- i.e. we have unrolled the function call
-  unrolled = Eval.normalise 
+  unrolled = Eval.evaluate []
     $ Term.unflattenApp (inner_fix_body : inner_args) 
   
   -- A name for our new function
@@ -109,7 +113,10 @@ deforest term = do
       
     -- The substitutions which will match the original call to the
     -- innermost function to its recursive call
-    unifying_substs = mergeUnifiers 
+    unifying_substs :: [ZTermSubstitution]
+    unifying_substs =
+      map (Map.mapKeysMonotonic Term.Var)
+      $ mergeUnifiers 
       $ map (unifier inner_rec_call) rec_calls
     
     -- Recursive calls to the new function we are inventing
@@ -123,8 +130,8 @@ deforest term = do
       
     makeReplacement :: ZVar -> ZTerm -> ZTermSubstitution
     makeReplacement gen_var new_rec_call = 
-      Map.singleton ( Context.fill outer_cxt (Term.Var gen_var)
-                    , Context.fill outer_cxt new_rec_call )
+      Map.singleton (Context.fill outer_cxt (Term.Var gen_var))
+                    (Context.fill outer_cxt new_rec_call)
       
         
 -- | Splits a term into an innermost function call and an outermost context
@@ -166,4 +173,34 @@ floatNonStrictArgsOut other = other
    
 
 
+
+-- * Tests
+
+-- | Test that the innermost function of "rev (rev xs)" is "rev xs"
+-- and that the outer context is "rev _"
+test_extractInnermost1 = 
+  Test.label "extractInnermost1" 
+    $ Test.run $ do
+  Test.loadPrelude
+  Test.newVar "xs" "list"
+  var_ys <- Test.newVar "ys" "list"
+  rr_xs <- Test.term "rev (rev xs)"
+  r_ys <- Test.term "rev ys"
+  r_xs <- Test.term "rev xs"
+  
+  -- Attempt to split "rev (rev xs)" into
+  -- ("rev _", "rev xs")
+  let (cxt, r_xs') = extractInnermost rr_xs
+  
+  -- Check that the inner term is equal to "rev xs"
+  let test1 = Test.assert $ r_xs' == r_xs
+  
+  -- Check that the outer context is "rev _"
+  -- by filling it with "ys" and seeing if it is equal to "rev ys"
+  let cxt_ys = Context.fill cxt (Term.Var var_ys)
+  let test2 = Test.assert $ cxt_ys == r_ys
+  
+  return $ Test.list [test1, test2]
+  
+  
 

@@ -1,6 +1,7 @@
 module Zeno.Parsing.ZML (
   readTypeDef, readBinding, readProp, 
-  readLine, readTerm, readSpec
+  readLine, readTerm, readType,
+  readSpec, readLines, 
 ) where
 
 import Prelude ()
@@ -25,6 +26,11 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 type Parser = ReaderT (Map String ZTerm) Zeno
+
+readLines :: String -> [(String, String)]
+readLines str
+  | (Just pair, rest) <- readLine str = pair : readLines rest
+  | otherwise = []
 
 readLine :: String -> (Maybe (String, String), String)
 readLine str = 
@@ -56,6 +62,9 @@ readProp text = runParser $ do
   
 readTerm :: String -> Zeno ZTerm
 readTerm = runParser . parseRTerm . Raw.parseTerm
+
+readType :: String -> Zeno ZType
+readType = runParser . parseRType . Raw.parseType
 
 readSpec :: String -> Zeno (String, [ZTerm], ZTerm)
 readSpec (Raw.parseClause -> (vars, Logic.Clause [] (Logic.Equal left right)))
@@ -146,7 +155,8 @@ parseTypedRVar (RVar name (Just rtype)) = do
   Var.declare name ztype Var.Universal
     
 localVars :: [(String, ZVar)] -> Parser a -> Parser a
-localVars = appEndo . concatMap (Endo . uncurry localTerm . second Term.Var)
+localVars = appEndo 
+          . concatMap (Endo . uncurry localTerm . second Term.Var)
 
 localTypedRVars :: [RVar] -> Parser a -> Parser a
 localTypedRVars rvars parser = do

@@ -7,7 +7,7 @@ module Zeno.Term (
   flattenApp, unflattenApp, flattenLam, unflattenLam,
   function, isNormal, isCaseNormal, isFixTerm, 
   caseSortFix, reannotate, freshenCaseSort, 
-  etaReduce, mapCaseBranchesM
+  etaReduce, mapCaseBranchesM, stripLambdas
 ) where
 
 import Prelude ()
@@ -184,6 +184,9 @@ flattenLam :: Term a -> ([a], Term a)
 flattenLam (Lam v rhs) = 
   let (vs, rhs') = flattenLam rhs in (v : vs, rhs')
 flattenLam expr = ([], expr)
+
+stripLambdas :: Term a -> Term a
+stripLambdas = snd . flattenLam
 
 unflattenLam :: [a] -> Term a -> Term a
 unflattenLam = flip (foldr Lam)

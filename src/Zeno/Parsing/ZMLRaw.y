@@ -3,7 +3,7 @@ module Zeno.Parsing.ZMLRaw (
   RTypeDef (..), RVar (..), RProp,
   RType, RTerm, RAlt, RClause, REquation,
   isNameChar, 
-  parseTypeDef, parseBinding, 
+  parseTypeDef, parseBinding, parseType,
   parseProp, parseTerm, parseClause
 ) where
 
@@ -23,6 +23,7 @@ import qualified Zeno.Name as Name
 %name prop Prop
 %name term Term
 %name clause Clause
+%name typ Type
 
 %tokentype { Token }
 
@@ -207,6 +208,9 @@ parseTerm = term . lexer
 
 parseClause :: String -> RClause
 parseClause = clause . lexer
+
+parseType :: String -> RType
+parseType = typ . lexer
 
 instance Show RTypeDef where
   show (RTypeDef name cons) = 

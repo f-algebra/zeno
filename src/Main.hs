@@ -17,7 +17,7 @@ import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
-import qualified Zeno.Parsing.ZML as ZML 
+import qualified Zeno.Parsing.ZML as ZML
 
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)

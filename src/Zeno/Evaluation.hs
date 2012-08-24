@@ -1,6 +1,6 @@
 -- | Beta-reduction
 module Zeno.Evaluation (
-  normalise, strictTerm, criticalTerm, unrollFix
+  normalise, evaluate, strictTerm, criticalTerm, unrollFix
 ) where                    
 
 import Prelude ()

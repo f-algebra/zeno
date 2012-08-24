@@ -13,7 +13,7 @@ import Zeno.Var ( ZTerm, ZClause, ZDataType,
                   ZTermSubstitution, ZVar, ZEquation )
 import Zeno.Unique ( Unique, MonadUnique )
 import Zeno.Show
-import Zeno.Simplifier ( simplify )
+-- import Zeno.Simplifier ( simplify )
 
 import qualified Zeno.Facts as Facts
 import qualified Zeno.Name as Name
@@ -77,20 +77,28 @@ instance Empty ZenoState where
                         theory = empty,
                         output = mempty }
 
-modifyTheory :: MonadState ZenoState m => (ZenoTheory -> ZenoTheory) -> m ()
-modifyTheory f = modify $ \zs -> zs { theory = f (theory zs) }
+modifyTheory :: MonadState ZenoState m => 
+  (ZenoTheory -> ZenoTheory) -> m ()
+modifyTheory f = modify $ \zs -> zs { 
+  theory = f (theory zs) }
 
 defineType :: MonadState ZenoState m => ZDataType -> m ()
-defineType dtype = modifyTheory $ \z -> z 
-  { types = Map.insert (Name.label . DataType.name $ dtype) dtype (types z) }
+defineType dtype = modifyTheory $ \z -> z { types = 
+  Map.insert (Name.label . DataType.name $ dtype) dtype (types z) }
       
 defineTerm :: MonadState ZenoState m => String -> ZTerm -> m ()
 defineTerm name expr = do
+  {- 
+  Removed because having the simplifier referenced here created
+  a cycle in module imports, since the simplifier uses the test framework
+  which uses Core
+  
   expr' <- unwrapFunctor 
     $ liftM (fromMaybe expr)
-    $ simplify expr 
+    $ simplify expr
+  -}
   modifyTheory $ \z -> z
-    { terms = Map.insert name expr' (terms z) }
+    { terms = Map.insert name expr (terms z) }
   
 defineProp :: MonadState ZenoState m => String -> ZClause -> m ()
 defineProp name cls = modifyTheory $ \z -> z
