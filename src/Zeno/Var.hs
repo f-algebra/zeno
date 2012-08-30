@@ -22,7 +22,7 @@ import Zeno.Name ( Name, MonadUnique )
 import Zeno.Term ( Term, Alt, TermSubstitution )
 import Zeno.Logic ( Clause, Equation )
 import Zeno.Utils
-import Zeno.Show
+import Zeno.Show ()
 import Zeno.Unification
 import Zeno.Traversing
 

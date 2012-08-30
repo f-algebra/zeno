@@ -38,10 +38,11 @@ module Zeno.Prelude
   Empty (..),
   (++), concat, intercalate, map, void,
   concatMap, concatMapM, partitionM, concatEndos,
-  fromJustT, anyM, allM, findM, sortWith,
+  fromJustT, anyM, allM, findM, sortWith, deleteIndices,
   minimalBy, nubOrd, elemOrd, intersectOrd, countOrd,
-  fromRight, fromLeft, traceMe, setAt, firstM,
-  wrapFunctor, unwrapFunctor, FunctorWrapper
+  fromRight, fromLeft, traceMe, setAt, firstM, butlast,
+  wrapFunctor, unwrapFunctor, FunctorWrapper,
+  _test_Prelude
 )
 where
 
@@ -95,6 +96,7 @@ import Debug.Trace
 import System.IO.Unsafe
 
 import qualified Data.Set as Set
+import qualified Test.HUnit as HUnit
 
 infixr 6 ++
 
@@ -190,6 +192,35 @@ intersectOrd :: Ord a => [a] -> [a] -> [a]
 intersectOrd xs ys = Set.toList 
   $ Set.intersection (Set.fromList xs) (Set.fromList ys)
   
+-- | Delete a set of indices from a list
+deleteIndices :: [Int] -> [a] -> [a]
+deleteIndices is xs = d 0 (sort is) xs
+  where
+  d :: Int -> [Int] -> [a] -> [a]
+  d _ [] xs = xs
+  d _ _ [] = []
+  d i (j:js) (x:xs)
+    | i == j = d (i + 1) js xs
+    | otherwise = x : d (i + 1) (j:js) xs
+    
+-- | Only return the given indices of a list
+takeIndices :: [Int] -> [a] -> [a]
+takeIndices is xs = t 0 (sort is) xs
+  where
+  t :: Int -> [Int] -> [a] -> [a]
+  t _ [] _ = []
+  t _ _ [] = []
+  t i (j:js) (x:xs) 
+    | i == j = x : t (i + 1) js xs
+    | otherwise = t (i + 1) (j:js) xs
+    
+-- | Drops the last element of a list
+butlast :: [a] -> [a]
+butlast [] = error "Zeno.Prelude.butlast given empty list"
+butlast [x] = []
+butlast (x:xs) = x : (butlast xs)
+
+  
 fromRight :: Either a b -> b
 fromRight (Right b) = b
 
@@ -209,4 +240,19 @@ wrapFunctor = WrapFunctor
 
 newtype FunctorWrapper f a = WrapFunctor { unwrapFunctor :: f a }
   deriving ( Functor, Foldable, Traversable, Monad, Applicative )
+  
+  
+-- * Tests
+
+_test_Prelude = HUnit.TestList 
+  [ _test_deleteIndices
+  , _test_takeIndices ]
+
+testCase = HUnit.TestCase . HUnit.assert
+
+_test_deleteIndices = testCase
+  $ deleteIndices [1, 3, 6] [0..7] == [0, 2, 4, 5, 7]
+  
+_test_takeIndices = testCase
+  $ takeIndices [1, 3, 6] [0..7] == [1, 3, 6]
 

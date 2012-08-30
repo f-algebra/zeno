@@ -7,7 +7,8 @@ module Zeno.Term (
   flattenApp, unflattenApp, flattenLam, unflattenLam,
   function, isNormal, isCaseNormal, isFixTerm, 
   caseSortFix, reannotate, freshenCaseSort, 
-  etaReduce, mapCaseBranchesM, stripLambdas
+  mapCaseBranches, mapCaseBranchesM, 
+  stripLambdas, etaReduce,
 ) where
 
 import Prelude ()
@@ -196,13 +197,17 @@ etaReduce (Lam x (App f y))
   | (Var x) == y = etaReduce f
 etaReduce other = other
 
-mapCaseBranchesM :: Monad m => (Term a -> m (Term a)) -> Term a -> m (Term a)
+mapCaseBranchesM :: Monad m => 
+  (Term a -> m (Term a)) -> Term a -> m (Term a)
 mapCaseBranchesM f (Cse srt cse_of alts) =
   Cse srt cse_of `liftM` mapM mapAltM alts
   where
   mapAltM (Alt con vars term) = 
     Alt con vars `liftM` mapCaseBranchesM f term
 mapCaseBranchesM f other = f other
+
+mapCaseBranches :: (Term a -> Term a) -> Term a -> Term a
+mapCaseBranches f = runIdentity . mapCaseBranchesM (Identity . f)
     
 -- | Resets all the 'CaseSort' annotations within a term.
 -- Only run this on top-level terms, if you are within 'Fix'ed variables

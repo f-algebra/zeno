@@ -2,11 +2,11 @@
 module Zeno.Context (
   Context, contextTerm,
   new, fill, fillType, matches, 
-  compose, identity
+  compose, identity, null
 ) where
 
 import Prelude ()
-import Zeno.Prelude
+import Zeno.Prelude hiding ( null )
 import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Term ( TermTraversable )
@@ -43,6 +43,9 @@ identity = new id
 compose :: Context -> Context -> Context
 compose left right = 
   Context (fill left (contextTerm right)) (fillType right)
+  
+null :: Context -> Bool
+null (Context term _) = term == gapTerm 
 
 fill :: Context -> ZTerm -> ZTerm
 fill cxt filler = 

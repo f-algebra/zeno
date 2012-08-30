@@ -142,11 +142,6 @@ stripEndNumber name =
   if isAlpha $ head name 
     then name
     else takeWhile (not . isDigit) name
-    
-butlast :: [a] -> [a]
-butlast [] = []
-butlast [x] = []
-butlast (x : xs) = x : (butlast xs)
 
 replace :: (Functor f, Eq a) => a -> a -> f a -> f a
 replace = genericReplace fmap

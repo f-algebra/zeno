@@ -12,7 +12,6 @@ import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType,
                   ZTermSubstitution, ZVar, ZEquation )
 import Zeno.Unique ( Unique, MonadUnique )
-import Zeno.Show
 -- import Zeno.Simplifier ( simplify )
 
 import qualified Zeno.Facts as Facts
@@ -22,6 +21,7 @@ import qualified Zeno.Term as Term
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
 import qualified Zeno.Unique as Unique
+import qualified Zeno.Show as Show
 
 type StringMap = Map String
 type ZProof = ()
@@ -150,5 +150,5 @@ instance Show ZenoTheory where
     
     showType dtype =
       "\ntype " ++ show (DataType.name dtype) ++ " where" 
-      ++ concatMap (("\n  " ++) . showTyped) (DataType.constructors dtype) ++ "\n"
+      ++ concatMap (("\n  " ++) . Show.typed) (DataType.constructors dtype) ++ "\n"
   

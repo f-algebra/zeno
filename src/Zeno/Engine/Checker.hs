@@ -1,6 +1,6 @@
 module Zeno.Engine.Checker (
   ZCounterExample,
-  falsify, explore, guessContext, inconsistent, independentMatches
+  falsify, explore, guessContext, inconsistent
 ) where
 
 import Prelude ()
@@ -67,24 +67,8 @@ inconsistent = invalid maxDepth [] =<< Facts.ask
         ReducedToFalse -> return True
         ReducedTo eqs' -> invalid depth other_vars eqs'
   
-data Explored
-  = Explored  { exploredValue :: ZTerm
-              , exploredMatches :: [ZTerm] }
-  deriving ( Eq, Ord )
-              
-instance TermTraversable Explored ZVar where
-  mapTermsM f (Explored v ms) = 
-    return Explored `ap` f v `ap` mapM f ms
-  mapTerms f (Explored v ms) = 
-    Explored (f v) (map f ms)
-  termList (Explored v ms) = v:(termList ms)
-
-addMatch :: ZTerm -> Explored -> Explored
-addMatch term expl = 
-  assert (not $ Term.isVar term) 
-  $ expl { exploredMatches = term:(exploredMatches expl) }
-
-explore :: forall m . (MonadUnique m, Facts.Reader m) => ZTerm -> m [Explored]
+explore :: forall m . (MonadUnique m, Facts.Reader m) => 
+  ZTerm -> m [ZTerm]
 explore term = do
   term' <- Term.reannotate term
   explored <- expl maxDepth term'
@@ -92,7 +76,7 @@ explore term = do
   where
   checkCount ts = assert (length ts >= maxDepth) ts
   
-  expl :: Int -> ZTerm -> m [Explored]
+  expl :: Int -> ZTerm -> m [ZTerm]
   expl depth term = do
     if depth == 0
     then finished
@@ -107,10 +91,10 @@ explore term = do
           ct_term -> concatMapM (explSplit ct_term) cons 
     where
     finished 
-      | Var.isConstructorTerm term = return [Explored term []]
+      | Var.isConstructorTerm term = return [term]
       | otherwise = return []
 
-    explInd :: ZVar -> ZTerm -> m [Explored]
+    explInd :: ZVar -> ZTerm -> m [ZTerm]
     explInd ct_var con_term = do
       explore_me <- Eval.normalise term'
       explored <- expl (depth - 1) explore_me
@@ -120,31 +104,17 @@ explore term = do
      ct_vterm = Term.Var ct_var
      term' = replaceWithin ct_vterm con_term term
       
-    explSplit :: ZTerm -> ZTerm -> m [Explored]
+    explSplit :: ZTerm -> ZTerm -> m [ZTerm]
     explSplit ct_term con_term = 
       Facts.add new_fact $ do
         explore_me <- Eval.normalise term
-        liftM (map (addMatch ct_term)) 
-          $ expl (depth - 1) explore_me
+        expl (depth - 1) explore_me
       where
       new_fact = Logic.Equal ct_term con_term
 
-independentMatches :: (Facts.Reader m, MonadUnique m) => ZTerm -> m [ZTerm]
-independentMatches term = do
-  matches <- liftM (map exploredMatches) 
-           $ explore term
-  return
-    $ filter (\t -> Var.freeZVars t `Set.isSubsetOf` free_vars) 
-    $ Set.toList
-    $ Set.unions
-    $ map Set.fromList matches
-  where
-  free_vars = Var.freeZVars term
-
 guessContext :: (Facts.Reader m, MonadUnique m) => ZTerm -> m Context
 guessContext term = do
-  potentials <- liftM (map exploredValue) 
-              $ explore term
+  potentials <- explore term
   if null potentials
   then return idContext
   else do
@@ -178,7 +148,8 @@ guessContext term = do
     gap_i = head gap_is
     gaps = map (!! gap_i) args
     gap_type = typeOf (head gaps)
-    context fill = Term.unflattenApp $ fst_con:(setAt gap_i fill (head args))
+    context fill = Term.unflattenApp 
+      $ fst_con:(setAt gap_i fill (head args))
 
 falsify :: forall m . (MonadUnique m, Facts.Reader m) 
   => ZClause -> m (Maybe ZCounterExample)
@@ -212,7 +183,3 @@ falsify cls = do
       addSplit = Map.insert split_var con_term
       success = Just (addSplit mempty)
 
-instance Show Explored where
-  show (Explored term matches) = 
-    "Explored " ++ show term ++ " <= " ++ show matches
-      
