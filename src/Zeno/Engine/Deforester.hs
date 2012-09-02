@@ -8,40 +8,54 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification 
 import Zeno.Name ( Name )
-import Zeno.Unique ( MonadUnique, Unique )
-import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, ZAlt,
-                  ZVar, ZTermSubstitution, ZEquation )
+import Zeno.Unique ( MonadUnique  )
+import Zeno.Var ( ZTerm, ZVar, ZTermSubstitution )
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
-import Zeno.Engine.Simplifications ( floatLazyArgsOut )
+import Zeno.Engine.Simplifying ( floatLazyArgsOut )
 import Zeno.Core ( Zeno )
 
-import qualified Zeno.Facts as Facts
 import qualified Zeno.Evaluation as Eval
-import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
-import qualified Zeno.Unique as Unique
 import qualified Zeno.Context as Context
 import qualified Zeno.Testing as Test
 import qualified Zeno.Show as Show
+import qualified Zeno.Facts as Facts
+import qualified Zeno.Engine.Checker as Checker
+import qualified Zeno.Engine.Factoring as Factoring
+
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Test.HUnit as HUnit
 
-simplify :: MonadUnique m => ZTerm -> m ZTerm
-simplify term = do
-  term2 <- floatLazyArgsOut term
-  fromMaybe term2 
-    `liftM` deforest term2
-
+simplify :: forall m . MonadUnique m => ZTerm -> m ZTerm
+simplify = mapWithinM simp
+  where
+  simp :: ZTerm -> m ZTerm
+  simp term 
+    | not (Var.isDestructible term) = return term
+    | otherwise = do
+      term2 <- floatLazyArgsOut term
+      term3 <- fromMaybe term2
+        `liftM` deforest term2
+      
+      mby_term3_cxt <- Facts.none 
+        $ Checker.guessContext term3
+        
+      term4 <- case mby_term3_cxt of
+        Nothing -> return term3
+        Just cxt -> fromMaybe term3
+          `liftM` Factoring.value cxt term3
+      
+      return term4
+      
 
 deforest :: forall m . MonadUnique m => ZTerm -> m (Maybe ZTerm)
-deforest term 
-  | Term.isFix inner_func = runMaybeT $ do
+deforest term = runMaybeT $ do
   -- Create a new function variable for the new function 
   -- we are inventing
   fun_var <- Var.declare name fun_type Var.Universal
@@ -168,9 +182,7 @@ deforest term
     makeReplacement gen_var new_rec_call = 
       Map.singleton (Context.fill outer_cxt (Term.Var gen_var))
                     new_rec_call
-      
-deforest _ = 
-  return Nothing
+
         
 -- | Splits a term into an innermost function call
 -- and an outermost context

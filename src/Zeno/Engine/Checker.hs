@@ -40,7 +40,7 @@ strictVars terms = do
   return 
     . nubOrd
     . map Term.fromVar
-    . filter Var.destructible
+    . filter Var.isDestructible
     . filter Term.isVar 
     $ s_terms
 
@@ -82,7 +82,7 @@ explore term = do
     then finished
     else do
       ct_term <- Eval.criticalTerm term
-      if not (Var.destructible ct_term)
+      if not (Var.isDestructible ct_term)
       then finished
       else do
         cons <- Var.caseSplit (Type.fromVar (typeOf ct_term))
@@ -112,22 +112,21 @@ explore term = do
       where
       new_fact = Logic.Equal ct_term con_term
 
-guessContext :: (Facts.Reader m, MonadUnique m) => ZTerm -> m Context
-guessContext term = do
+guessContext :: (Facts.Reader m, MonadUnique m) => 
+  ZTerm -> m (Maybe Context)
+guessContext term = runMaybeT $ do
   potentials <- explore term
-  if null potentials
-  then return idContext
+  guard (not $ null potentials)
+  let (p:ps) = potentials
+  if all (alphaEq p) ps
+  then return (Context.new (const p) empty)
   else do
-    let (p:ps) = potentials
-    if all (alphaEq p) ps
-    then return (Context.new (const p) empty)
-    else 
-      case matchContext potentials of
-        Nothing -> return idContext
-        Just (context, gap_type) -> return (Context.new context gap_type)
+    (context, gap_type) <- MaybeT . return
+      $ matchContext potentials
+    return
+      $ Context.new context gap_type
   where
-  idContext :: Context
-  idContext = Context.new id (typeOf term)
+  id_context = Context.identity (typeOf term)
   
   matchContext :: [ZTerm] -> Maybe (ZTerm -> ZTerm, ZType)
   matchContext terms = do

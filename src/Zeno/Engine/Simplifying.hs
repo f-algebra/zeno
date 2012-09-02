@@ -1,4 +1,4 @@
-module Zeno.Engine.Simplifications  (
+module Zeno.Engine.Simplifying  (
   floatLazyArgsOut,
   _test
 ) where
@@ -8,24 +8,18 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification 
 import Zeno.Name ( Name )
-import Zeno.Unique ( MonadUnique, Unique )
-import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, ZAlt,
-                  ZVar, ZTermSubstitution, ZEquation )
+import Zeno.Unique ( MonadUnique )
+import Zeno.Var ( ZTerm, ZVar )
 import Zeno.Type ( typeOf )
-import Zeno.Term ( TermTraversable (..) )
 import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
 
-import qualified Zeno.Facts as Facts
 import qualified Zeno.Evaluation as Eval
-import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
-import qualified Zeno.Unique as Unique
 import qualified Zeno.Context as Context
 import qualified Zeno.Testing as Test
-import qualified Zeno.Engine.Checker as Checker
 import qualified Data.Map as Map
 import qualified Data.Set as Set
   

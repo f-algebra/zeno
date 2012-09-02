@@ -6,10 +6,10 @@ import Zeno.Utils ( flipPair )
 import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Var ( ZTerm )
 import Zeno.Show
-import Zeno.Evaluation ( normalise )
-import Zeno.Simplifier ( simplify )
 
-import qualified Zeno.Engine.Simplifier as Simplifier
+import qualified Zeno.Engine.Deforester as Deforester
+import qualified Zeno.Engine.Simplifying as Simplifying
+import qualified Zeno.Engine.Factoring as Factoring
 import qualified Zeno.Engine.Checker as Checker
 
 import qualified Zeno.Facts as Facts
@@ -18,9 +18,24 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML
+import qualified Zeno.Testing as Test
+
+import qualified Test.HUnit.Text as HUnit
 
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
+
+testAll :: IO ()
+testAll = do
+  HUnit.runTestTT all_tests
+  return ()
+  where
+  all_tests = Test.list 
+    [ _test_Prelude
+    , Eval._test
+    , Deforester._test
+    , Simplifying._test
+    ]
 
 runZeno :: Zeno a -> IO a
 runZeno zeno = 
@@ -49,24 +64,19 @@ command ("explore", arg) = do
   let raw_term = snd (Term.flattenLam term)
   potentials <- Facts.none $ Checker.explore raw_term
   cxt <- Facts.none $ Checker.guessContext raw_term
-  matches <- Facts.none $ Checker.independentMatches raw_term
   Zeno.print $ 
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
   Zeno.print $ "Guessed context: " ++ show cxt
-  Zeno.print $ "Independent matches: " ++ show matches
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   term' <- Facts.none $ Eval.normalise term
   Zeno.print (show term')
 command ("simplify", arg) = do
   term <- ZML.readTerm arg
-  mby_simpler <- Simplifier.run term
+  simpler <- Deforester.simplify term
   Zeno.print $ 
-    case mby_simpler of
-      Nothing -> "Simplification failed: " ++ show term
-      Just simpler -> "Simplified: " ++ show term 
-        ++ "\n\n" ++ (showWithDefinitions simpler)
+    "Simplified: " ++ show term ++ "\n\n" ++ (show simpler)
 {-
   Zeno.print $
     case term' of

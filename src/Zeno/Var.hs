@@ -11,7 +11,7 @@ module Zeno.Var (
   new, declare, invent, clone, generalise,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
-  destructible, isHNF, magic
+  isDestructible, isHNF, magic
 ) where
 
 import Prelude ()
@@ -113,8 +113,8 @@ instantiateTerm term = do
 caseSplit :: MonadUnique m => ZDataType -> m [ZTerm]
 caseSplit = mapM (instantiateTerm . Term.Var) . DataType.constructors
   
-destructible :: ZTerm -> Bool
-destructible term = 
+isDestructible :: ZTerm -> Bool
+isDestructible term = 
   Type.isVar (typeOf term) 
   && not (isConstructorTerm term)
   && not (Term.isCse term)
