@@ -105,7 +105,8 @@ eval (Term.Cse cse_srt cse_of cse_alts) =
     where
     (Term.Var con : term_args) = Term.flattenApp term
     Just match = case find ((== con) . Term.altCon) alts of
-      Nothing -> error $ "Failed match: " ++ show term ++ " with " ++ show alts
+      Nothing -> error 
+        $ "Failed match: " ++ show term ++ " with " ++ show alts
       Just match -> Just match
     bound_vars = map Term.Var . Term.altVars $ match
     sub = Map.fromList $ bound_vars `zip` term_args 

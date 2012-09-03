@@ -39,12 +39,11 @@ simplify = mapWithinM simp
     | not (Var.isFunctionCall term) = return term
     | otherwise = do
       term2 <- floatLazyArgsOut term
-      term3 <- fromMaybeT (return term2) $ do
-        deforest term2
+      term3 <- fromMaybeT (return term2) 
+        $ deforest term2
       
-      term4 <- fromMaybeT (return term3) $ do
-        cxt <- Facts.none (Checker.guessContext term3)
-        Factoring.value cxt term3
+      term4 <- fromMaybeT (return term3)
+        $ (liftM (traceMe (show term3 ++ "\n==>\n"))) $ Factoring.value term3
       
       return term4
       
@@ -54,7 +53,7 @@ deforest :: forall m . (MonadUnique m, MonadPlus m) =>
 deforest term = do
   -- Create a new function variable for the new function 
   -- we are inventing
-  fun_var <- Var.declare name fun_type Var.Universal
+  fun_var <- Var.invent fun_type Var.Universal
   
   -- Apply 'deforestBranch' down each branch of the unrolled
   -- innermost function which has had the context pushed inside it, 

@@ -20,8 +20,6 @@ import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML
 
-import qualified Test.HUnit.Text as HUnit
-
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
 

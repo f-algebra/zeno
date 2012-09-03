@@ -2,6 +2,8 @@ module Zeno.Tests.Evaluation (
   tests
 ) where
 
+import Prelude ()
+import Zeno.Prelude
 import Zeno.Evaluation ( evaluate )
 import qualified Zeno.Testing as Test
 
@@ -50,4 +52,5 @@ test_evaluate1 =
   
   return
     $ Test.list [test1, test2, test3, test4]
+
 

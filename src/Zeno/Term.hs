@@ -298,7 +298,9 @@ instance Ord a => Unifiable (Alt a) where
   applyUnifier sub =
     substitute (Map.mapKeysMonotonic Var sub)
     
-instance (Ord a, TermTraversable t a) => WithinTraversable (Term a) t where
+instance (Ord a, TermTraversable t a) => 
+    WithinTraversable (Term a) t where
+    
   mapWithinM f = mapTermsM mapWithinT
     where
     mapWithinT (App lhs rhs) =

@@ -15,14 +15,19 @@ import Zeno.Context ( Context (..) )
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
 import qualified Zeno.Evaluation as Eval
+import qualified Zeno.Facts as Facts
+import qualified Zeno.Engine.Checker as Checker
 import qualified Zeno.Context as Context
 import qualified Data.Map as Map
 
--- | Factors a given value context out of a given term
-value :: (MonadUnique m, MonadPlus m) => Context -> ZTerm -> m ZTerm
-value value_cxt old_term 
-  | not (Term.isFix func) = error (show old_term)
-  | otherwise = do
+-- | Attempts to factor a value context out of a given term,
+-- returns 'mzero' on failure
+value :: (MonadUnique m, MonadPlus m) => ZTerm -> m ZTerm
+value old_term = do
+  -- Try to find a value context to factor out
+  value_cxt <- Facts.none
+    $ Checker.guessContext old_term
+
   -- Declare a new variable for the function we are creating
   new_fix_var <- 
     Var.invent (Context.fillType value_cxt) Var.Universal
@@ -40,8 +45,8 @@ value value_cxt old_term
         
   let replacement_sub = Map.singleton 
         (Term.Var old_fix_var) new_fix_in_context
-      new_body = Eval.evaluate []
-        $ substitute replacement_sub old_body
+      replaced =  substitute replacement_sub old_body
+      new_body = Eval.evaluate [] replaced
    
   -- Attempt to remove the context from every branch of the new body.
   -- Lifted to 'MonadPlus' so if it fails down any branch
@@ -58,6 +63,7 @@ value value_cxt old_term
   -- Return this new function, with the arguments reapplied 
   -- and within the context
   return
+    $ trace ("MEEP:\n" ++ show new_fix_in_context ++ "\napplied to\n" ++ show old_body ++ "\ngives\n" ++ show replaced ++ "\nafter eval\n" ++ show new_body ++ "\nafter factoring\n" ++ show factored_body ++ "\neventually\n" ++ show new_fix)
     $ Context.fill value_cxt
     $ Term.unflattenApp 
     $ (new_fix : args)

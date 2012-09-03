@@ -11,14 +11,14 @@ import Zeno.Traversing
 
 import qualified Data.Map as Map
 
--- |The result of trying to unify two values where
+-- | The result of trying to unify two values where
 -- 'NoUnifier' indicates that unification was impossible,
 -- This is just 'Maybe (Substitution n a)'.
 data Unification n a 
   = Unifier !(Substitution n a)
   | NoUnifier
 
--- |Values which can be unified
+-- | Values which can be unified
 class Ord a => Unifiable a where
   type UniVar a
   type UniTerm a
@@ -35,8 +35,8 @@ class Ord a => Unifiable a where
             y' = applyUnifier sub y
         in assert (x' == y') (Just x')
   
--- |Appending two unifiers will create a unifier that will
--- perform both unifications, if such a unifier is still valid.
+-- | Appending two unifiers will create a unifier that will
+-- perform both unifications, if such a unifier is still valid
 instance (Ord a, Eq b) => Monoid (Unification a b) where
   mempty = Unifier mempty
 
@@ -45,9 +45,10 @@ instance (Ord a, Eq b) => Monoid (Unification a b) where
   mappend (Unifier left) (Unifier right)
     | and (Map.elems inter) = Unifier (Map.union left right)
     | otherwise = NoUnifier
-    where inter = Map.intersectionWith (==) left right
+    where 
+    inter = Map.intersectionWith (==) left right
  
--- |This is like 'catMaybes'
+-- | This is like 'catMaybes'
 mergeUnifiers :: [Unification a b] -> [Substitution a b]
 mergeUnifiers = foldl' addUni []
   where addUni subs NoUnifier = subs

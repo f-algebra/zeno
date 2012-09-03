@@ -12,8 +12,9 @@ import qualified Zeno.Testing as Test
 tests = Test.label "Deforester"
   $ Test.list 
   [ test_deforestSimple
-  , test_deforestHOF
-  , test_valueFactoring ]
+ -- , test_deforestHOF
+  --, test_valueFactoring ]
+  ]
   
 assertSimpEq :: ZTerm -> ZTerm -> Zeno Test.Test
 assertSimpEq t1 t2 = do
@@ -30,19 +31,12 @@ test_deforestSimple =
   Test.newVar "xs" "list"
   Test.newVar "n" "nat"
   
-  -- We will simplify "rev (xs ++ [n])"
+  -- We will simplify "rev (xs ++ [n])",
+  -- aiming for "n :: (rev xs)"
   rev_app <- Test.term "rev (app xs (cons n nil))"
-  desired_form <- Test.term simple_revapp
+  desired_form <- Test.term "cons n (rev xs)"
   
   assertSimpEq rev_app desired_form
-  where
-  simple_revapp = unlines $
-    [ "("
-    , "fix (f:list->list) in "
-    , "fun (ys:list) -> "
-    , "case ys of | nil -> cons n nil "
-    , "| cons y ys' -> app (f ys') (cons y nil)"
-    , ") xs" ]
     
     
 -- | Simplify some higher-order functions
