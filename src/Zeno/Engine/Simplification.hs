@@ -1,6 +1,5 @@
-module Zeno.Engine.Simplifying  (
-  floatLazyArgsOut,
-  _test
+module Zeno.Engine.Simplification  (
+  floatLazyArgsOut
 ) where
 
 import Prelude ()
@@ -116,35 +115,4 @@ floatLazy orig_term@(Term.Fix old_fix_var old_fix_body) = do
     
 floatLazy other = 
   return other
-
-
--- * Tests
-
-_test = Test.list 
-  [ _test_floatLazy ]
-  
--- | Test that for "app" it properly floats the second argument 
--- outside the 'Fix'
-_test_floatLazy =
-  Test.label "floatLazy" 
-    $ Test.run $ do
-  Test.loadPrelude
-  
-  -- 'app2' is what 'app' should look like after argument floating
-  app2 <- Test.term properly_floated_app
-  
-  app <- Test.term "app"
-  floated_app <- floatLazyArgsOut app
-  
-  return 
-    $ Test.assertAlphaEq floated_app app2
-  where
-  properly_floated_app = unlines $
-    [ "fun (xs:list) (ys:list) -> "
-    , "("
-    , "fix (f:list->list) in "
-    , "fun (zs:list) -> "
-    , "case zs of | nil -> ys "
-    , "| cons z zs' -> cons z (f zs')"
-    , ") xs" ]
 

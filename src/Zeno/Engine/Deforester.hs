@@ -1,6 +1,5 @@
 module Zeno.Engine.Deforester  (
-  simplify,
-  _test
+  simplify
 ) where
 
 import Prelude ()
@@ -14,7 +13,7 @@ import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
 import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
-import Zeno.Engine.Simplifying ( floatLazyArgsOut )
+import Zeno.Engine.Simplification ( floatLazyArgsOut )
 import Zeno.Core ( Zeno )
 
 import qualified Zeno.Evaluation as Eval
@@ -37,25 +36,22 @@ simplify = mapWithinM simp
   where
   simp :: ZTerm -> m ZTerm
   simp term 
-    | not (Var.isDestructible term) = return term
+    | not (Var.isFunctionCall term) = return term
     | otherwise = do
       term2 <- floatLazyArgsOut term
-      term3 <- fromMaybe term2
-        `liftM` deforest term2
+      term3 <- fromMaybeT (return term2) $ do
+        deforest term2
       
-      mby_term3_cxt <- Facts.none 
-        $ Checker.guessContext term3
-        
-      term4 <- case mby_term3_cxt of
-        Nothing -> return term3
-        Just cxt -> fromMaybe term3
-          `liftM` Factoring.value cxt term3
+      term4 <- fromMaybeT (return term3) $ do
+        cxt <- Facts.none (Checker.guessContext term3)
+        Factoring.value cxt term3
       
       return term4
       
 
-deforest :: forall m . MonadUnique m => ZTerm -> m (Maybe ZTerm)
-deforest term = runMaybeT $ do
+deforest :: forall m . (MonadUnique m, MonadPlus m) => 
+  ZTerm -> m ZTerm
+deforest term = do
   -- Create a new function variable for the new function 
   -- we are inventing
   fun_var <- Var.declare name fun_type Var.Universal
@@ -83,7 +79,7 @@ deforest term = runMaybeT $ do
   where
   -- The inner_term we will unfold to perform deforestation
   -- and the context that surrounds it
-  (outer_cxt, inner_term) = extractInnermost term
+  (outer_cxt, inner_term) = Context.innermost term
   (inner_func : inner_args) = Term.flattenApp inner_term 
   Term.Fix inner_fix_var inner_fix_body = inner_func
   
@@ -115,7 +111,7 @@ deforest term = runMaybeT $ do
   -- in the innermost term.
   -- Fails (returns 'Nothing') if any recursive calls 
   -- to the unrolled innermost term remain.
-  deforestBranch :: ZVar -> ZTerm -> MaybeT m ZTerm
+  deforestBranch :: ZVar -> ZTerm -> m ZTerm
   deforestBranch new_fun_var b_term = do
     -- The new variables to generalise recursive innermost function calls
     gen_vars <- mapM makeGenVar rec_calls
@@ -183,125 +179,5 @@ deforest term = runMaybeT $ do
       Map.singleton (Context.fill outer_cxt (Term.Var gen_var))
                     new_rec_call
 
-        
--- | Splits a term into an innermost function call
--- and an outermost context
-extractInnermost :: ZTerm -> (Context, ZTerm)
-extractInnermost term
-  | (left_args, fix_arg:right_args) <- break isFuncCall args =
-      let (inner_cxt, inner_term) = extractInnermost fix_arg
-          cxt_func t = Term.unflattenApp $ 
-                        func:(left_args ++ (t:right_args))
-          outer_cxt = Context.new cxt_func (typeOf fix_arg)
-      in (Context.compose inner_cxt outer_cxt, inner_term)
-  | otherwise = 
-      (Context.identity (typeOf term), term)
-  where
-  (func:args) = Term.flattenApp term
-  isFuncCall = Term.isFix . head . Term.flattenApp
-  
 
--- * Tests
-
-_test = Test.list 
-  [ _test_extractInnermost 
-  , _test_deforestSimple
-  , _test_deforestHOF
-  , _test_valueFactoring ]
-  
-assertSimpEq :: ZTerm -> ZTerm -> Zeno HUnit.Test
-assertSimpEq t1 t2 = do
-  t1' <- simplify t1
-  t2' <- simplify t2
-  return $ Test.assertAlphaEq t1' t2'
-
-  
--- | Test that the innermost function of "rev (rev xs)" is "rev xs"
--- that the innermost of "rev (app xs ys)" is "app xs ys"
--- and that the outer context of both is "rev _"
-_test_extractInnermost = 
-  Test.label "extractInnermost" 
-    $ Test.run $ do
-  Test.loadPrelude
-  Test.newVar "xs" "list"
-  var_ys <- Test.newVar "ys" "list"
-  let floatedTerm = floatLazyArgsOut <=< Test.term
-  
-  rr_xs <- floatedTerm "rev (rev xs)"
-  rapp_xs_ys <- floatedTerm "rev (app xs ys)"
-  r_ys <- floatedTerm "rev ys"
-  r_xs <- floatedTerm "rev xs"
-  app_xs_ys <- floatedTerm"app xs ys"
-  
-  -- Attempt to split "rev (rev xs)" into
-  -- ("rev _", "rev xs")
-  let (cxt1, r_xs') = extractInnermost rr_xs
-  
-  -- Attempt to split "rev (app xs ys)" into 
-  -- ("rev _", "app xs ys")
-  let (cxt2, app_xs_ys') = extractInnermost rapp_xs_ys
-  
-  -- Check that the inner terms are correct
-  let test1 = Test.assertAlphaEq r_xs' r_xs
-      test2 = Test.assertAlphaEq app_xs_ys' app_xs_ys
-  
-  -- Check that the outer context of both is "rev _"
-  -- by filling it with "ys" and seeing if it is equal to "rev ys"
-  let cxt1_ys = Context.fill cxt1 (Term.Var var_ys)
-      cxt2_ys = Context.fill cxt2 (Term.Var var_ys)
-      test3 = Test.assertAlphaEq cxt1_ys r_ys
-      test4 = Test.assertAlphaEq cxt2_ys r_ys
-  
-  return $ Test.list [test1, test2, test3, test4]
-  
-  
--- | Test some simple deforestations
-_test_deforestSimple = 
-  Test.label "Deforesting revapp"
-    $ Test.run $ do
-  Test.loadPrelude
-  Test.newVar "xs" "list"
-  Test.newVar "n" "nat"
-  
-  -- We will simplify "rev (xs ++ [n])"
-  rev_app <- Test.term "rev (app xs (cons n nil))"
-  desired_form <- Test.term simple_revapp
-  
-  assertSimpEq rev_app desired_form
-  where
-  simple_revapp = unlines $
-    [ "("
-    , "fix (f:list->list) in "
-    , "fun (ys:list) -> "
-    , "case ys of | nil -> cons n nil "
-    , "| cons y ys' -> app (f ys') (cons y nil)"
-    , ") xs" ]
-    
-    
--- | Simplify some higher-order functions
-_test_deforestHOF =
-  Test.label "Deforesting HOF" 
-    $ Test.run $ do
-  Test.loadPrelude
-  
-  Test.newVar "xs" "list"
-  Test.newVar "f" "nat -> nat"
-  Test.newVar "g" "nat -> nat"
-  
-  mapmap1 <- Test.term "map f (map g xs)"
-  mapmap2 <- Test.term "map (fun (x:nat) -> f (g x)) xs"
-  
-  assertSimpEq mapmap1 mapmap2
-  
-  
--- | Test simplifications which require value factoring
-_test_valueFactoring =
-  Test.label "Testing value factoring"
-    $ Test.run $ do
-  Test.loadPrelude
-  
-  var_xs <- Test.newVar "xs" "list"
-  revrev <- Test.term "rev (rev xs)"
-  
-  assertSimpEq revrev (Term.Var var_xs)
-
+                               

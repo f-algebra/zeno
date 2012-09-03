@@ -112,17 +112,17 @@ explore term = do
       where
       new_fact = Logic.Equal ct_term con_term
 
-guessContext :: (Facts.Reader m, MonadUnique m) => 
-  ZTerm -> m (Maybe Context)
-guessContext term = runMaybeT $ do
+guessContext :: (Facts.Reader m, MonadUnique m, MonadPlus m) => 
+  ZTerm -> m Context
+guessContext term = do
   potentials <- explore term
   guard (not $ null potentials)
   let (p:ps) = potentials
   if all (alphaEq p) ps
   then return (Context.new (const p) empty)
   else do
-    (context, gap_type) <- MaybeT . return
-      $ matchContext potentials
+    (context, gap_type) <- 
+      liftMaybe (matchContext potentials)
     return
       $ Context.new context gap_type
   where

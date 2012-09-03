@@ -6,9 +6,10 @@ import Zeno.Utils ( flipPair )
 import Zeno.Core ( ZenoState, Zeno )
 import Zeno.Var ( ZTerm )
 import Zeno.Show
+import Zeno.Tests.All ( runTests )
 
 import qualified Zeno.Engine.Deforester as Deforester
-import qualified Zeno.Engine.Simplifying as Simplifying
+import qualified Zeno.Engine.Simplification as Simplification
 import qualified Zeno.Engine.Factoring as Factoring
 import qualified Zeno.Engine.Checker as Checker
 
@@ -18,24 +19,14 @@ import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML
-import qualified Zeno.Testing as Test
 
 import qualified Test.HUnit.Text as HUnit
 
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
 
-testAll :: IO ()
-testAll = do
-  HUnit.runTestTT all_tests
-  return ()
-  where
-  all_tests = Test.list 
-    [ _test_Prelude
-    , Eval._test
-    , Deforester._test
-    , Simplifying._test
-    ]
+test :: IO ()
+test = runTests
 
 runZeno :: Zeno a -> IO a
 runZeno zeno = 
@@ -63,7 +54,7 @@ command ("explore", arg) = do
   term <- ZML.readTerm arg
   let raw_term = snd (Term.flattenLam term)
   potentials <- Facts.none $ Checker.explore raw_term
-  cxt <- Facts.none $ Checker.guessContext raw_term
+  cxt <- runMaybeT $ Facts.none $ Checker.guessContext raw_term
   Zeno.print $ 
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)

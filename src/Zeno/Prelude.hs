@@ -42,7 +42,7 @@ module Zeno.Prelude
   minimalBy, nubOrd, elemOrd, intersectOrd, countOrd,
   fromRight, fromLeft, traceMe, setAt, firstM, butlast,
   wrapFunctor, unwrapFunctor, FunctorWrapper,
-  _test_Prelude
+  liftMaybe, fromMaybeT, takeIndices,
 )
 where
 
@@ -220,6 +220,14 @@ butlast [] = error "Zeno.Prelude.butlast given empty list"
 butlast [x] = []
 butlast (x:xs) = x : (butlast xs)
 
+liftMaybe :: MonadPlus m => Maybe a -> m a
+liftMaybe Nothing = mzero
+liftMaybe (Just x) = return x
+
+fromMaybeT :: Monad m => m a -> MaybeT m a -> m a
+fromMaybeT def = join
+  . liftM (maybe def return)
+  . runMaybeT
   
 fromRight :: Either a b -> b
 fromRight (Right b) = b
@@ -240,19 +248,5 @@ wrapFunctor = WrapFunctor
 
 newtype FunctorWrapper f a = WrapFunctor { unwrapFunctor :: f a }
   deriving ( Functor, Foldable, Traversable, Monad, Applicative )
-  
-  
--- * Tests
 
-_test_Prelude = HUnit.TestList 
-  [ _test_deleteIndices
-  , _test_takeIndices ]
-
-testCase = HUnit.TestCase . HUnit.assert
-
-_test_deleteIndices = testCase
-  $ deleteIndices [1, 3, 6] [0..7] == [0, 2, 4, 5, 7]
-  
-_test_takeIndices = testCase
-  $ takeIndices [1, 3, 6] [0..7] == [1, 3, 6]
 

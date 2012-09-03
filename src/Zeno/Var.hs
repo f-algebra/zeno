@@ -9,6 +9,7 @@ module Zeno.Var (
   isUniversal, universalVariables,
   distinguishFixes, freeZVars,
   new, declare, invent, clone, generalise,
+  isFunctionCall,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
   isDestructible, isHNF, magic
@@ -72,9 +73,10 @@ isConstructor (sort -> Constructor {}) = True
 isConstructor _ = False
 
 isConstructorTerm :: ZTerm -> Bool
-isConstructorTerm = 
-  fromMaybe False . fmap isConstructor . Term.function 
-  
+isConstructorTerm (Term.function -> Term.Var f_var) =
+  isConstructor f_var
+isConstructorTerm _ = False
+
 isHNF :: ZTerm -> Bool
 isHNF term = Term.isVar term 
           || isConstructorTerm term
@@ -118,6 +120,11 @@ isDestructible term =
   Type.isVar (typeOf term) 
   && not (isConstructorTerm term)
   && not (Term.isCse term)
+  
+isFunctionCall :: ZTerm -> Bool
+isFunctionCall term =
+  Term.isFix (Term.function term)
+  && Type.isVar (typeOf term)
   
 recursiveArguments :: ZTerm -> [ZTerm]
 recursiveArguments term 

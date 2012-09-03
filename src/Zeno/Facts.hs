@@ -44,6 +44,11 @@ instance MonadUnique m => MonadUnique (FactsT m) where
   getStream = lift getStream
   putStream = lift . putStream
   
+instance MonadPlus m => MonadPlus (FactsT m) where
+  mzero = lift mzero
+  f1 `mplus` f2 = FactsT $ \eqs ->
+    runT f1 eqs `mplus` runT f2 eqs
+  
 instance Reader Identity where
   ask = return []
   local = const id
@@ -55,5 +60,6 @@ instance Reader m => Reader (MaybeT m) where
 instance Reader m => Reader (IdentityT m) where
   ask = lift ask
   local f = IdentityT . local f . runIdentityT
+
 
 

@@ -170,9 +170,8 @@ isCaseNormal = Set.null . freeFixes
 fromVar :: Term a -> a
 fromVar (Var v) = v
 
-function :: Term a -> Maybe a
-function (flattenApp -> (Var x : _)) = Just x
-function _ = Nothing
+function :: Term a -> Term a
+function = head . flattenApp
 
 flattenApp :: Term a -> [Term a]
 flattenApp (App lhs rhs) = flattenApp lhs ++ [rhs]

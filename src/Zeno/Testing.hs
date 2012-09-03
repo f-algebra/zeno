@@ -1,4 +1,5 @@
 module Zeno.Testing (
+  Test,
   run, term, loadPrelude, newVar,
   label, list, assert, assertAlphaEq
 ) where
@@ -18,22 +19,24 @@ import qualified Zeno.Parsing.ZML as ZML
 import qualified Zeno.Logic as Logic
 import qualified Test.HUnit as HUnit
 
-run :: HUnit.Testable t => Zeno t -> HUnit.Test 
+type Test = HUnit.Test
+
+run :: HUnit.Testable t => Zeno t -> Test
 run = HUnit.test . flip evalState empty
 
 term :: String -> Zeno ZTerm
 term = ZML.readTerm
 
-list :: [HUnit.Test] -> HUnit.Test
+list :: [Test] -> Test
 list = HUnit.TestList
 
-label :: String -> HUnit.Test -> HUnit.Test
+label :: String -> Test -> Test
 label = HUnit.TestLabel
 
-assert :: HUnit.Assertable t => t -> HUnit.Test
+assert :: HUnit.Assertable t => t -> Test
 assert = HUnit.TestCase . HUnit.assert
 
-assertAlphaEq :: ZTerm -> ZTerm -> HUnit.Test
+assertAlphaEq :: ZTerm -> ZTerm -> Test
 assertAlphaEq x y = 
   label (show (Logic.Equal x y))
   $ assert (x `alphaEq` y)

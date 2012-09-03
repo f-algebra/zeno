@@ -10,7 +10,6 @@ import Zeno.Name ( Name )
 import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZVar )
 import Zeno.Type ( typeOf )
-import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
 
 import qualified Zeno.Var as Var
@@ -20,10 +19,10 @@ import qualified Zeno.Context as Context
 import qualified Data.Map as Map
 
 -- | Factors a given value context out of a given term
-value :: MonadUnique m => Context -> ZTerm -> m (Maybe ZTerm)
+value :: (MonadUnique m, MonadPlus m) => Context -> ZTerm -> m ZTerm
 value value_cxt old_term 
   | not (Term.isFix func) = error (show old_term)
-  | otherwise = runMaybeT $ do
+  | otherwise = do
   -- Declare a new variable for the function we are creating
   new_fix_var <- 
     Var.invent (Context.fillType value_cxt) Var.Universal
@@ -45,10 +44,10 @@ value value_cxt old_term
         $ substitute replacement_sub old_body
    
   -- Attempt to remove the context from every branch of the new body.
-  -- Lifted to 'MaybeT' so if it fails down any branch
-  -- the whole function returns 'Nothing'
-  factored_body <- MaybeT . return $
-    Term.mapCaseBranchesM (Context.matches value_cxt) new_body
+  -- Lifted to 'MonadPlus' so if it fails down any branch
+  -- the whole function returns 'mzero'
+  factored_body <- liftMaybe
+    $ Term.mapCaseBranchesM (Context.matches value_cxt) new_body
   
   -- Since we are at this point the factoring succeeded, so this is the
   -- new function we have created

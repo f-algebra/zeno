@@ -42,7 +42,7 @@ unsafe = unsafePerformIO . global . Just
 new :: MonadUnique m => Maybe String -> m Name
 new mby_label = do
   uni <- Unique.new
-  let label = maybe ("?" ++ show uni) id mby_label
+  let label = maybe ("_" ++ show uni) id mby_label
   return (Name uni label)
   
 relabel :: String -> Name -> Name

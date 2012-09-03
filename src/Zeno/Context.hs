@@ -2,7 +2,7 @@
 module Zeno.Context (
   Context, contextTerm,
   new, fill, fillType, matches, 
-  compose, identity, null
+  compose, identity, null, innermost
 ) where
 
 import Prelude ()
@@ -11,6 +11,7 @@ import Zeno.Traversing
 import Zeno.Unification
 import Zeno.Term ( TermTraversable )
 import Zeno.Var ( ZTerm, ZVar, ZType ) 
+import Zeno.Type ( typeOf )
 
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
@@ -65,6 +66,22 @@ matches (Context cxt_term _) match_term =
         [(key, context_gap)] 
           | key == gap -> Just context_gap
         _ -> Nothing
+        
+-- | Splits a term into an innermost function call
+-- and an outermost context.
+innermost :: ZTerm -> (Context, ZTerm)
+innermost term
+  | (left_args, fix_arg:right_args) <- break Var.isFunctionCall args =
+      let (inner_cxt, inner_term) = innermost fix_arg
+          cxt_func t = Term.unflattenApp 
+            $ func : (left_args ++ (t : right_args))
+          outer_cxt = new cxt_func (typeOf fix_arg)
+      in (compose inner_cxt outer_cxt, inner_term)
+  | otherwise = 
+      (identity (typeOf term), term)
+  where
+  (func:args) = Term.flattenApp term
+
 
 instance TermTraversable Context ZVar where
   mapTermsM f (Context term typ) = 
