@@ -1,10 +1,11 @@
+-- | Removing my boilerplate.
+-- Does not require qualified import.
 module Zeno.Traversing (
-  WithinTraversable (..), HasVariables (..),
-  Substitution, replaceWithin,
+  WithinTraversable (..),
   withinList, strictlyWithinList,
   contains, containsStrictly,
-  removeSupersets, removeSubsets,
-  tryReplace, anyWithin
+  removeSupersets, removeSubsets, anyWithin,
+  HasVariables (..), isFreeIn
 ) where
 
 import Prelude ()
@@ -14,11 +15,8 @@ import Zeno.Utils
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-type Substitution = Map
-
 class WithinTraversable t f where
   mapWithinM :: Monad m => (t -> m t) -> f -> m f
-  substitute :: Ord t => Substitution t t -> f -> f
   
   mapWithin :: (t -> t) -> f -> f
   mapWithin = mapM_to_fmap mapWithinM
@@ -26,17 +24,10 @@ class WithinTraversable t f where
   foldWithin :: Monoid m => (t -> m) -> f -> m
   foldWithin g = execWriter . mapWithinM (\t -> tell (g t) >> return t)
 
-isOneToOne :: Ord b => Substitution a b -> Bool
-isOneToOne = not . containsDuplicates . Map.elems
-
-tryReplace :: Ord t => Substitution t t -> t -> t
-tryReplace map term = Map.findWithDefault term term map
-
-anyWithin :: forall t f .  WithinTraversable t f => (t -> Bool) -> f -> Bool
+  
+anyWithin :: forall t f .  WithinTraversable t f => 
+  (t -> Bool) -> f -> Bool
 anyWithin p = getAny . foldWithin (Any . p)
-
-replaceWithin :: (WithinTraversable t f, Ord t) => t -> t -> f -> f
-replaceWithin from to = substitute (Map.singleton from to)
 
 withinList :: WithinTraversable t f => f -> [t]
 withinList = foldWithin return
@@ -58,8 +49,11 @@ removeSupersets :: (WithinTraversable a a, Eq a) => [a] -> [a]
 removeSupersets sets = filter (not . isSuperset) sets
   where isSuperset set = any (containsStrictly set) sets
   
--- |This is here for want of a better place for it
-class HasVariables f where
-  type Var f
-  freeVars :: Ord (Var f) => f -> Set (Var f) 
+-- | This is here for want of a better place.
+class Ord (Var a) => HasVariables a where
+  type Var a
+  freeVars :: a -> Set (Var a) 
+  
+isFreeIn :: HasVariables a => Var a -> a -> Bool
+isFreeIn v = Set.member v . freeVars 
   

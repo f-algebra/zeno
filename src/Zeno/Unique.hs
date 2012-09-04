@@ -1,6 +1,8 @@
+-- | The generation and use of unique identifiers.
+-- Requires qualified import.
 module Zeno.Unique (
   Unique, MonadUnique (..), 
-  stream, new, global
+  stream, new, global, readonly
 ) where
 
 import Prelude ()
@@ -12,6 +14,7 @@ newtype Unique = Unique { run :: Int }
 stream :: [Unique]
 stream = map Unique [1..]
 
+-- | A computation which requires unique identifiers
 class Monad m => MonadUnique m where
   getStream :: m [Unique]
   putStream :: [Unique] -> m ()
@@ -21,6 +24,19 @@ new = do
   (fst:rest) <- getStream
   putStream rest
   return fst
+ 
+-- | Asserts that a given computation that requires unique values does
+-- not return something that contains these values.
+-- Therefore, we can reset the unique stream to what it was before 
+-- the computation, since these values will still be unique, 
+-- as they have not been output.
+-- 'State' becomes 'Reader'.
+readonly :: MonadUnique m => m a -> m a
+readonly comp = do
+  st <- getStream
+  x <- comp
+  putStream st
+  return x
   
 globalStream :: IORef [Unique]
 globalStream

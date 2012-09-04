@@ -9,7 +9,7 @@ import Zeno.Prelude
 import Zeno.Var ( ZVar, ZTerm, ZEquation )
 import Zeno.Term ( TermTraversable, mapTerms )
 import Zeno.Traversing
-import Zeno.Show
+import Zeno.Show ()
 import Zeno.Utils ( orderedSupersetOf )
 
 import qualified Zeno.Facts as Facts

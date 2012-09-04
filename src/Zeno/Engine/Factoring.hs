@@ -45,7 +45,7 @@ value old_term = do
         
   let replacement_sub = Map.singleton 
         (Term.Var old_fix_var) new_fix_in_context
-      replaced =  substitute replacement_sub old_body
+      replaced = substitute replacement_sub old_body
       new_body = Eval.evaluate [] replaced
    
   -- Attempt to remove the context from every branch of the new body.

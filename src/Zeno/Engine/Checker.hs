@@ -120,7 +120,7 @@ guessContext term = do
   let (p:ps) = potentials
   if all (alphaEq p) ps
   then return (Context.new (const p) empty)
-  else do
+  else d
     (context, gap_type) <- 
       liftMaybe (matchContext potentials)
     return

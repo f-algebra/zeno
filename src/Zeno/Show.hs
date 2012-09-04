@@ -164,7 +164,7 @@ instance (Ord a, Show a) => Show (Term a) where
           | otherwise = vars
     
     vars_s = intercalate " " (map show vars')
-    rhs_s | is_eta_case = "?" ++ show (Term.caseOfAlts rhs)
+    rhs_s | is_eta_case = show (Term.caseOfSort rhs) ++ show (Term.caseOfAlts rhs)
           | otherwise = show rhs
   
   show (Term.Fix f t) =

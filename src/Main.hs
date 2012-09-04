@@ -20,6 +20,8 @@ import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML
 
+-- TODO: tidy up reannotation, find some better way?
+
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
 

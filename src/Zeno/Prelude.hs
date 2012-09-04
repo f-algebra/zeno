@@ -42,7 +42,8 @@ module Zeno.Prelude
   minimalBy, nubOrd, elemOrd, intersectOrd, countOrd,
   fromRight, fromLeft, traceMe, setAt, firstM, butlast,
   wrapFunctor, unwrapFunctor, FunctorWrapper,
-  liftMaybe, fromMaybeT, takeIndices,
+  liftMaybe, fromMaybeT, takeIndices, isNub,
+  foldl1M,
 )
 where
 
@@ -112,6 +113,8 @@ map = fmap
 concat :: Monoid m => [m] -> m
 concat = mconcat
 
+-- | Sometimes you need an 'mempty' element, but don't have an
+-- appropriate 'mappend', so 'Empty' is a convenient superset of 'Monoid'.
 class Empty a where
   empty :: a
   
@@ -157,6 +160,9 @@ firstM _ [] = return Nothing
 firstM f (a:as) = do
   mby_b <- f a
   maybe (firstM f as) (return . Just) mby_b
+  
+foldl1M :: (Monad m, Foldable f) => (a -> a -> m a) -> f a -> m a
+foldl1M f (toList -> xs) = foldlM f (head xs) (tail xs)
     
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
 sortWith f = sortBy (compare `on` f)
@@ -174,6 +180,14 @@ minimalBy ord xs = y : (takeWhile ((== EQ) . ord y) ys)
 
 nubOrd :: Ord a => [a] -> [a]
 nubOrd = Set.toList . Set.fromList
+
+isNub :: forall a . Ord a => [a] -> Bool
+isNub = isNothing . foldrM dupM Set.empty
+  where
+  dupM :: a -> Set a -> Maybe (Set a)
+  dupM x xs = do
+    guard (not $ Set.member x xs)
+    return (Set.insert x xs)
   
 elemOrd :: Ord a => a -> [a] -> Bool
 elemOrd x = Set.member x . Set.fromList

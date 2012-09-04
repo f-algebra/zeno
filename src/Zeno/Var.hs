@@ -1,5 +1,4 @@
--- | Here we have the representation of variables inside Zeno; 
--- see 'ZVarClass' for the different types of variable we can have.
+-- | The representation of variables inside Zeno.
 module Zeno.Var (
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
@@ -7,9 +6,8 @@ module Zeno.Var (
   setType, caseSplit, relabel,
   isConstructor, isConstructorTerm,
   isUniversal, universalVariables,
-  distinguishFixes, freeZVars,
+  distinguishFixes, isFunctionCall,
   new, declare, invent, clone, generalise,
-  isFunctionCall,
   mapUniversal, foldUniversal,
   instantiateTerm, recursiveArguments,
   isDestructible, isHNF, magic
@@ -52,6 +50,19 @@ instance Eq ZVar where
   
 instance Ord ZVar where
   compare = compare `on` name
+  
+instance Show ZVar where
+  show var 
+    | isConstructor var = show (name var)
+    | otherwise = show (Name.uniqueId $ name var)
+  
+instance Name.Has ZVar where
+  get = name
+  
+instance HasVariables ZVar where
+  freeVars var
+    | isConstructor var = Set.empty
+    | otherwise = Set.singleton x
 
 -- |The different /sorts/ of variable within Zeno.
 data ZVarSort
@@ -85,9 +96,6 @@ isUniversal :: ZVar -> Bool
 isUniversal (sort -> Universal {}) = True
 isUniversal _ = False
   
-freeZVars :: (HasVariables a, Var a ~ ZVar) => a -> Set ZVar
-freeZVars = Set.filter (not . isConstructor) . freeVars
-
 distinguishFixes :: forall m . MonadUnique m => ZTerm -> m ZTerm
 distinguishFixes = mapWithinM distinguish
   where
@@ -173,7 +181,5 @@ foldUniversal f = foldWithin foldVars
   where
   foldVars (Term.Var x) = f x
   foldVars _ = mempty
-  
-instance Show ZVar where
-  show = show . name 
+
 

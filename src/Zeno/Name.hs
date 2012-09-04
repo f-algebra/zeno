@@ -1,22 +1,27 @@
 module Zeno.Name (
-  Name, MonadUnique, Unique,
+  Name, MonadUnique, Unique, 
+  Has ( get ),
   new, clone, invent, declare, label, relabel,
-  global, unsafe
+  global, unsafe,
+  uniqueId,
 ) where
 
 import Prelude ()
-import Zeno.Prelude
+import Zeno.Prelude hiding ( get )
 import Zeno.Unique ( Unique, MonadUnique )
 import qualified Zeno.Unique as Unique
 
-data Name = Name  { nameId :: !Unique,
+data Name = Name  { uniqueId :: !Unique,
                     label :: !String }
 
+class Has a where
+  get :: a -> Name
+
 instance Eq Name where
-  (==) = (==) `on` nameId
+  (==) = (==) `on` uniqueId
   
 instance Ord Name where
-  compare = compare `on` nameId
+  compare = compare `on` uniqueId
 
 instance Show Name where
   show = label
