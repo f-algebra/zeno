@@ -1,6 +1,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Zeno.Show (
-  simple, typed, withDefinitions, substitution
+  simple, typed, withDefinitions
 ) where
 
 import Prelude ()
@@ -12,6 +12,7 @@ import Zeno.DataType ( DataType )
 import Zeno.Term ( Term, Alt )
 import Zeno.Logic ( Equation, Clause )
 
+import qualified Zeno.Substitution as Substitution
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Logic as Logic
 import qualified Zeno.Term as Term
@@ -201,7 +202,7 @@ withDefinitions has_terms = show has_terms ++ defs_s
   
   showDef (name, def) = name ++ " = " ++ def
   
-substitution :: (Show k, Show v) => Substitution k v -> String
-substitution (Map.toList -> subs) =
-  "[ " ++ (intercalate "; " . map showSub) subs ++ " ]"
-  where showSub (k, v) = show k ++ " -> " ++ show v
+instance (Show k, Show v) => Show (Substitution.Map k v) where
+  show (Substitution.toList -> subs) =
+    "[ " ++ (intercalate "; " . map showSub) subs ++ " ]"
+    where showSub (k, v) = show k ++ " -> " ++ show v

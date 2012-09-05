@@ -10,10 +10,10 @@ import Zeno.Name ( Name )
 import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZVar )
 import Zeno.Type ( typeOf )
-import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
 
 import qualified Zeno.Evaluation as Eval
+import qualified Zeno.Unique as Unique
 import qualified Zeno.Type as Type
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -26,11 +26,10 @@ import qualified Data.Set as Set
 -- are not recursed upon outside the fix.
 floatLazyArgsOut :: MonadUnique m => ZTerm -> m ZTerm
 floatLazyArgsOut = 
-  liftM (Eval.evaluate []) 
-  . mapWithinM floatLazy
+  Unique.abstractGen . (Eval.normalise <=< mapWithinM floatLazy)
 
 -- The body of 'floatLazyArgsOut', which is mapped over every sub-term
-floatLazy :: MonadUnique m => ZTerm -> m ZTerm
+floatLazy :: ZTerm -> Unique.Gen ZTerm
 floatLazy orig_term@(Term.Fix old_fix_var old_fix_body) = do
   -- Define a new fixed variable
   -- with the new "smaller" type (less arguments)
@@ -44,7 +43,7 @@ floatLazy orig_term@(Term.Fix old_fix_var old_fix_body) = do
   -- Using this new body we can construct the new 'Fix'
   -- we also reannotate the case-splits since we have a new fix var
   new_fix <- Term.reannotate
-    $ Term.Fix new_fix_var
+    $ Term.Fix new_fix_var  
     $ Term.unflattenLam strict_vars new_body
         
   -- The resulting term needs to have the same arguments as the
@@ -56,7 +55,7 @@ floatLazy orig_term@(Term.Fix old_fix_var old_fix_body) = do
         $ new_fix : (map Term.Var strict_vars)
         
   -- Whether the original function definition is equivalent to the new one
-  let nothing_changed = new_term `alphaEq` orig_term
+  nothing_changed <- new_term `alphaEq` orig_term
         
   -- If there were no lazy variables we assert that the function 
   -- definition does not change

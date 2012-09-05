@@ -1,7 +1,7 @@
 module Zeno.Name (
   Name, MonadUnique, Unique, 
-  Has ( get ),
-  new, clone, invent, declare, label, relabel,
+  Has (..),
+  new, invent, declare, label, relabel,
   global, unsafe,
   uniqueId,
 ) where
@@ -16,6 +16,7 @@ data Name = Name  { uniqueId :: !Unique,
 
 class Has a where
   get :: a -> Name
+  freshen :: MonadUnique m => a -> m a
 
 instance Eq Name where
   (==) = (==) `on` uniqueId
@@ -26,8 +27,9 @@ instance Ord Name where
 instance Show Name where
   show = label
   
-clone :: MonadUnique m => Name -> m Name
-clone = declare . label
+instance Has Name where
+  get = id
+  freshen = declare . label
 
 invent :: MonadUnique m => m Name
 invent = new Nothing

@@ -13,14 +13,12 @@ import Zeno.Context ( Context )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZType, 
                   ZVar, ZTermSubstitution, ZEquation )
 import Zeno.Term ( TermTraversable (..) )
-import Zeno.Reduction
 import Zeno.Type ( typeOf )
 
 import qualified Zeno.Context as Context
 import qualified Zeno.DataType as DataType
 import qualified Zeno.Type as Type
 import qualified Zeno.Logic as Logic
-import qualified Zeno.Facts as Facts
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Core as Zeno
@@ -44,29 +42,6 @@ strictVars terms = do
     . filter Term.isVar 
     $ s_terms
 
-inconsistent :: forall m . (Facts.Reader m, MonadUnique m) => m Bool
-inconsistent = invalid maxDepth [] =<< Facts.ask 
-  where
-  invalid :: Int -> [ZVar] -> [ZEquation] -> m Bool
-  invalid 0 [] _ = return False
-  invalid depth [] eqs = do
-    s_vars <- liftM nubOrd $ concatMapM strictVars eqs
-    invalid (depth - 1) s_vars eqs
-  invalid depth (split_var : other_vars) eqs = do
-    con_terms <- Var.caseSplit 
-               $ Type.fromVar 
-               $ typeOf split_var
-    allM invalidCon con_terms
-    where
-    invalidCon :: ZTerm -> m Bool
-    invalidCon con_term = do 
-      reduced <- liftM (concatMap reduce)
-        $ mapM Eval.normalise
-        $ map (replaceWithin (Term.Var split_var) con_term) eqs
-      case reduced of
-        ReducedToFalse -> return True
-        ReducedTo eqs' -> invalid depth other_vars eqs'
-  
 explore :: forall m . (MonadUnique m, Facts.Reader m) => 
   ZTerm -> m [ZTerm]
 explore term = do
@@ -99,10 +74,10 @@ explore term = do
       explore_me <- Eval.normalise term'
       explored <- expl (depth - 1) explore_me
       return
-        $ replaceWithin con_term ct_vterm explored
+        $ REPLACEWITHIN?? con_term ct_vterm explored
      where
      ct_vterm = Term.Var ct_var
-     term' = replaceWithin ct_vterm con_term term
+     term' = REPLACEWITHIN?? ct_vterm con_term term
       
     explSplit :: ZTerm -> ZTerm -> m [ZTerm]
     explSplit ct_term con_term = 
@@ -149,36 +124,4 @@ guessContext term = do
     gap_type = typeOf (head gaps)
     context fill = Term.unflattenApp 
       $ fst_con:(setAt gap_i fill (head args))
-
-falsify :: forall m . (MonadUnique m, Facts.Reader m) 
-  => ZClause -> m (Maybe ZCounterExample)
-falsify cls = do
-  cls' <- Term.reannotate cls
-  check maxDepth [] cls'
-  where
-  check :: Int -> [ZVar] -> ZClause -> m (Maybe ZCounterExample)
-  check 0 [] _ = return Nothing
-  check depth [] cls = do
-    s_vars <- strictVars cls
-    check (depth - 1) s_vars cls
-  check depth (split_var : other_vars) cls = do
-    con_terms <- Var.caseSplit 
-               $ Type.fromVar 
-               $ typeOf split_var
-    firstM checkCon con_terms
-    where
-    checkCon :: ZTerm -> m (Maybe ZCounterExample)
-    checkCon con_term = do 
-      reduced <- liftM reduce
-        $ Eval.normalise
-        $ replaceWithin (Term.Var split_var) con_term cls
-      case reduced of
-        ReducedTo [] -> return Nothing
-        ReducedToFalse -> return success
-        ReducedTo sub_clses -> do
-          first <- firstM (check depth other_vars) sub_clses
-          return (addSplit <$> first)
-      where
-      addSplit = Map.insert split_var con_term
-      success = Just (addSplit mempty)
 

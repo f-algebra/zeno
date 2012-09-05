@@ -13,12 +13,12 @@ import qualified Zeno.Testing as Test
 import qualified Test.HUnit.Text as HUnit
 
 tests = Test.list
-  [ {- Prelude.tests
+  [ Prelude.tests
   , Context.tests
   , Eval.tests 
   , Simp.tests
   , Factoring.tests
-  , -} Deforester.tests ]
+  , Deforester.tests ]
   
 runTests :: IO ()
 runTests = do

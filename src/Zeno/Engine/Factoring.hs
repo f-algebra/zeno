@@ -12,11 +12,11 @@ import Zeno.Var ( ZTerm, ZVar )
 import Zeno.Type ( typeOf )
 import Zeno.Context ( Context (..) )
 
+import qualified Zeno.Substitution as Substitution
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
 import qualified Zeno.Evaluation as Eval
-import qualified Zeno.Facts as Facts
-import qualified Zeno.Engine.Checker as Checker
+-- import qualified Zeno.Engine.Checker as Checker
 import qualified Zeno.Context as Context
 import qualified Data.Map as Map
 
@@ -25,8 +25,9 @@ import qualified Data.Map as Map
 value :: (MonadUnique m, MonadPlus m) => ZTerm -> m ZTerm
 value old_term = do
   -- Try to find a value context to factor out
-  value_cxt <- Facts.none
-    $ Checker.guessContext old_term
+  mzero
+  value_cxt <- undefined 
+    -- Checker.guessContext old_term
 
   -- Declare a new variable for the function we are creating
   new_fix_var <- 
@@ -42,17 +43,14 @@ value old_term = do
         $ Term.unflattenApp
         $ map Term.Var
         $ new_fix_var : lam_vars
-        
-  let replacement_sub = Map.singleton 
-        (Term.Var old_fix_var) new_fix_in_context
-      replaced = substitute replacement_sub old_body
-      new_body = Eval.evaluate [] replaced
+
+  replaced <- Substitution.replace 
+    (Term.Var old_fix_var) new_fix_in_context old_body
+  new_body <- Eval.normalise replaced
    
   -- Attempt to remove the context from every branch of the new body.
-  -- Lifted to 'MonadPlus' so if it fails down any branch
-  -- the whole function returns 'mzero'
-  factored_body <- liftMaybe
-    $ Term.mapCaseBranchesM (Context.matches value_cxt) new_body
+  factored_body <- 
+    Term.mapCaseBranchesM (Context.matches value_cxt) new_body
   
   -- Since we are at this point the factoring succeeded, so this is the
   -- new function we have created

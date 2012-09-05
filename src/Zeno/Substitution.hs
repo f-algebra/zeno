@@ -2,11 +2,11 @@ module Zeno.Substitution (
   Map, Apply (..),
   replace, isOneToOne, try,
   union, unionM, unions,
-  singleton, elems, null, fromList
+  singleton, elems, null, fromList, toList
 ) where
 
 import Prelude ()
-import Zeno.Prelude hiding ( Map, null, union )
+import Zeno.Prelude hiding ( Map, null, union, toList )
 import Zeno.Traversing
 import Zeno.Unique ( MonadUnique )
 
@@ -30,7 +30,7 @@ class WithinTraversable t f => Apply t f where
 -- the first argument for the second.
 replace :: (MonadUnique m, Apply t f, Ord t) => t -> t -> f -> m f
 replace from to = apply (singleton from to)
-  
+
 isOneToOne :: Ord b => Map a b -> Bool
 isOneToOne = not . isNub . elems
 
@@ -52,7 +52,7 @@ union (MapWrap map1) (MapWrap map2) = do
   where
   inter = DMap.intersectionWith (==) map1 map2
   
--- Unifies two substitution maps, which themselves are the result of
+-- | Unifies two substitution maps, which themselves are the result of
 -- potentially failing computations. The whole thing fails if either
 -- computation fails, or the unioning fails.
 unionM :: (Ord a, Eq b, MonadPlus m) => 
@@ -66,9 +66,10 @@ unionM mm1 mm2 = do
 unions :: (Ord a, Eq b, MonadPlus m) => [Map a b] -> m (Map a b)
 unions = foldl1M union
 
-instance HasVariables b => HasVariables (Map a b) where
+instance (HasVariables a, HasVariables b, Var a ~ Var b) => 
+    HasVariables (Map a b) where
   type Var (Map a b) = Var b
-  freeVars = foldMap freeVars . elems   
+  freeVars = foldMap freeVars . toList
 
 instance Empty (Map a b) where
   empty = MapWrap DMap.empty
@@ -84,6 +85,9 @@ elems = DMap.elems . unwrapMap
 null :: Map a b -> Bool
 null = DMap.null . unwrapMap
 
-fromList :: (Ord a, Foldable f) => f (a, b) -> Map a b
-fromList = MapWrap . DMap.fromList . toList
+fromList :: Ord a => [(a, b)] -> Map a b
+fromList = MapWrap . DMap.fromList
+
+toList :: Map a b -> [(a, b)]
+toList = DMap.toList . unwrapMap
 

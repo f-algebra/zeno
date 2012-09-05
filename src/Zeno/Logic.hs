@@ -1,7 +1,8 @@
+{-# LANGUAGE UndecidableInstances #-}
 module Zeno.Logic (
   Equation (..), Clause (..), 
   addAntecedent, removeAntecedent, 
-  flatten, rewriteL2R, toPair
+  flatten, toPair
 ) where
 
 import Prelude ()
@@ -22,11 +23,11 @@ data Clause a
                   consequent :: !(Equation a) }
   deriving ( Eq, Foldable )
     
-instance HasVariables (Equation a) where
+instance (HasVariables a, Var a ~ a) => HasVariables (Equation a) where
   type Var (Equation a) = a
   freeVars (Equal e1 e2) = freeVars e1 ++ freeVars e2
 
-instance HasVariables (Clause a) where
+instance (HasVariables a, Var a ~ a) => HasVariables (Clause a) where
   type Var (Clause a) = a
   
   freeVars cls = consVars ++ antsVars
@@ -67,5 +68,3 @@ flatten cls = antecedents cls ++ [consequent cls]
 toPair :: Equation a -> (Term a, Term a)
 toPair (Equal x y) = (x, y)
 
-rewriteL2R :: Equation a -> Substitution (Term a) (Term a)
-rewriteL2R (Equal left right) = Map.singleton left right

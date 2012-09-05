@@ -11,9 +11,7 @@ import Zeno.Tests.All ( runTests )
 import qualified Zeno.Engine.Deforester as Deforester
 import qualified Zeno.Engine.Simplification as Simplification
 import qualified Zeno.Engine.Factoring as Factoring
-import qualified Zeno.Engine.Checker as Checker
 
-import qualified Zeno.Facts as Facts
 import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -21,6 +19,11 @@ import qualified Zeno.Core as Zeno
 import qualified Zeno.Parsing.ZML as ZML
 
 -- TODO: tidy up reannotation, find some better way?
+-- think I have a fix: only give cse-splits a 'Name', then
+-- before unrolling, log every free case-split id beneath the fix
+-- then if any remain after reduction the unrolling wasn't complete...
+-- will need some method of (re)annotating these names,
+-- maybe freshen all Cse's in substitution mapping elements
 
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
@@ -50,6 +53,7 @@ command :: (String, String) -> Zeno ()
 command ("type", arg) = ZML.readTypeDef arg
 command ("let", arg) = ZML.readBinding arg
 command ("prop", arg) = ZML.readProp arg
+{-
 command ("explore", arg) = do
   term <- ZML.readTerm arg
   let raw_term = snd (Term.flattenLam term)
@@ -59,6 +63,7 @@ command ("explore", arg) = do
     "Potential values for " ++ show term ++ " are:\n" 
     ++ intercalate "\n" (map show potentials)
   Zeno.print $ "Guessed context: " ++ show cxt
+  -}
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
   term' <- Facts.none $ Eval.normalise term

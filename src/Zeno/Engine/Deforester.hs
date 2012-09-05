@@ -8,23 +8,20 @@ import Zeno.Traversing
 import Zeno.Unification 
 import Zeno.Name ( Name )
 import Zeno.Unique ( MonadUnique  )
-import Zeno.Var ( ZTerm, ZVar, ZTermSubstitution )
+import Zeno.Var ( ZTerm, ZVar, ZTermMap )
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
-import Zeno.Utils ( orderedSupersetOf )
 import Zeno.Context ( Context (..) )
 import Zeno.Engine.Simplification ( floatLazyArgsOut )
 import Zeno.Core ( Zeno )
 
+import qualified Zeno.Substitution as Substitution
 import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Type as Type
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
 import qualified Zeno.Context as Context
-import qualified Zeno.Testing as Test
 import qualified Zeno.Show as Show
-import qualified Zeno.Facts as Facts
-import qualified Zeno.Engine.Checker as Checker
 import qualified Zeno.Engine.Factoring as Factoring
 
 import qualified Data.Map as Map
@@ -51,10 +48,20 @@ simplify = mapWithinM simp
 deforest :: forall m . (MonadUnique m, MonadPlus m) => 
   ZTerm -> m ZTerm
 deforest term = do
+  -- The inner term with the 'Term.Fix' of the leftmost function removed
+  -- i.e. we have unrolled the function call
+  unrolled <- Eval.normalise
+    $ Term.unflattenApp (inner_fix_body : inner_args) 
+  
+  -- We then push the outer context down into every branch 
+  cxt_applied <- 
+    Term.mapCaseBranchesM (Eval.normalise . Context.fill outer_cxt)
+    $ unrolled
+  
   -- Create a new function variable for the new function 
   -- we are inventing
   fun_var <- Var.invent fun_type Var.Universal
-  
+    
   -- Apply 'deforestBranch' down each branch of the unrolled
   -- innermost function which has had the context pushed inside it, 
   -- hopefully creating a body for our new function.
@@ -82,24 +89,12 @@ deforest term = do
   (inner_func : inner_args) = Term.flattenApp inner_term 
   Term.Fix inner_fix_var inner_fix_body = inner_func
   
-  free_vars = Set.toList
-    $ Set.unions 
-    $ map Var.freeZVars 
-    $ inner_args
+  free_vars = Set.toList 
+    $ concatMap freeVars inner_args
   arg_types = map typeOf free_vars
   
   -- The type of the new function we are creating
   fun_type = Type.unflatten (arg_types ++ [typeOf term])
-  
-  -- The inner term with the 'Term.Fix' of the leftmost function removed
-  -- i.e. we have unrolled the function call
-  unrolled = Eval.evaluate []
-    $ Term.unflattenApp (inner_fix_body : inner_args) 
-  
-  -- We then push the outer context down into every branch 
-  cxt_applied = 
-    Term.mapCaseBranches (Eval.evaluate [] . Context.fill outer_cxt)
-    $ unrolled
     
   -- A name for our new function
   name = "[" 
@@ -116,18 +111,19 @@ deforest term = do
     gen_vars <- mapM makeGenVar rec_calls
     
     -- Generalise innermost recursive calls
-    let gen_subst = Map.unions 
-          $ zipWith Map.singleton rec_calls (map Term.Var gen_vars)
-        gen_b_term = substitute gen_subst b_term
+    gen_map <- Substitution.unions 
+      $ zipWith Substitution.singleton rec_calls 
+      $ map Term.Var gen_vars
+    gen_b_term <- Substitution.apply gen_map b_term
         
     -- Simplify this generalised term    
     simp_gen_b_term <- simplify gen_b_term
     
-    -- Replace any instances of the original term with the new function
-    -- we are inventing
-    let replacement = Map.unions
-          $ zipWith makeReplacement gen_vars new_rec_calls
-        new_b_term = substitute replacement simp_gen_b_term
+    -- Replace any instances of the original term that have now
+    -- been generalised with the new function we are inventing
+    replace_gen_vars <- Substitution.unions
+      $ zipWith makeReplacement gen_vars new_rec_calls
+    new_b_term <- Substitution.apply replace_gen_vars simp_gen_b_term
         
     -- We fail if any recursive innermost calls remain
     -- i.e. if any generalisation variables remain
@@ -158,7 +154,7 @@ deforest term = do
       
     -- The substitutions which will match the original call to the
     -- innermost function to its recursive call
-    unifying_substs :: [ZTermSubstitution]
+    unifying_substs :: [ZTermMap]
     unifying_substs =
       map (Map.mapKeysMonotonic Term.Var)
       $ mergeUnifiers 
@@ -173,10 +169,10 @@ deforest term = do
       repl_term = Term.unflattenApp
         $ map Term.Var (new_fun_var : free_vars)
       
-    makeReplacement :: ZVar -> ZTerm -> ZTermSubstitution
-    makeReplacement gen_var new_rec_call = 
-      Map.singleton (Context.fill outer_cxt (Term.Var gen_var))
-                    new_rec_call
+    makeReplacement :: ZVar -> ZTerm -> ZTermMap
+    makeReplacement gen_var = 
+      Substitution.singleton 
+        (Context.fill outer_cxt (Term.Var gen_var))
 
 
                                

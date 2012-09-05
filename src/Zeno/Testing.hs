@@ -7,6 +7,7 @@ module Zeno.Testing (
 import Prelude ()
 import Zeno.Prelude hiding ( assert )
 import Zeno.Var ( ZTerm, ZVar )
+import Zeno.Unique ( MonadUnique )
 import Zeno.Core ( Zeno )
 import Zeno.Show ()
 import Zeno.Unification
@@ -36,10 +37,12 @@ label = HUnit.TestLabel
 assert :: HUnit.Assertable t => t -> Test
 assert = HUnit.TestCase . HUnit.assert
 
-assertAlphaEq :: ZTerm -> ZTerm -> Test
-assertAlphaEq x y = 
-  label (show (Logic.Equal x y))
-  $ assert (x `alphaEq` y)
+assertAlphaEq :: MonadUnique m => ZTerm -> ZTerm -> m Test
+assertAlphaEq x y = do
+  eq <- x `alphaEq` y
+  return
+    $ label (show (Logic.Equal x y))
+    $ assert eq
 
 newVar :: String -> String -> Zeno ZVar
 newVar name_s typ_s = do

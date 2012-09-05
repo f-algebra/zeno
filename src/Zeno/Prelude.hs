@@ -37,7 +37,8 @@ module Zeno.Prelude
   
   Empty (..),
   (++), concat, intercalate, map, void,
-  concatMap, concatMapM, partitionM, concatEndos,
+  concatMap, concatMapM, partitionM,
+  concatEndos, concatEndosM,
   fromJustT, anyM, allM, findM, sortWith, deleteIndices,
   minimalBy, nubOrd, elemOrd, intersectOrd, countOrd,
   fromRight, fromLeft, traceMe, setAt, firstM, butlast,
@@ -51,7 +52,8 @@ import Prelude hiding ( mapM, foldl, foldl1, mapM_, minimum, maximum, sequence_,
   foldr, foldr1, sequence, Maybe (..), maybe, all, any, elem, product,
   and, concat, notElem, or, concatMap, sum, (++), map )
 
-import Control.Arrow ( (>>>), (<<<), (&&&), (***), first, second )
+import Control.Arrow ( Arrow (..), (>>>), (<<<), (&&&), (***), 
+  first, second, Kleisli (..), runKleisli )
 import Control.Applicative hiding ( empty )
 import Control.Monad ( liftM, ap, replicateM, join,
   zipWithM, filterM, when, unless, guard, (>=>), (<=<), MonadPlus (..) )
@@ -97,7 +99,6 @@ import Debug.Trace
 import System.IO.Unsafe
 
 import qualified Data.Set as Set
-import qualified Test.HUnit as HUnit
 
 infixr 6 ++
 
@@ -120,6 +121,10 @@ class Empty a where
   
 instance Empty (a -> a) where
   empty = id
+  
+instance Monad m => Monoid (Kleisli m a a) where
+  mempty = arr id
+  mappend = (>>>)
 
 concatMap :: (Monoid m, Foldable f) => (a -> m) -> f a -> m
 concatMap f = concat . map f . toList
@@ -167,8 +172,12 @@ foldl1M f (toList -> xs) = foldlM f (head xs) (tail xs)
 sortWith :: Ord b => (a -> b) -> [a] -> [a]
 sortWith f = sortBy (compare `on` f)
 
-concatEndos :: [a -> a] -> a -> a
-concatEndos = appEndo . mconcat . map Endo
+concatEndos :: Foldable f => f (a -> a) -> a -> a
+concatEndos = appEndo . mconcat . map Endo . toList
+
+concatEndosM :: (Monad m, Foldable f) => f (a -> m a) -> a -> m a
+concatEndosM = runKleisli . mconcat . map Kleisli . toList
+
 
 instance Functor First where
   fmap f = First . fmap f . getFirst

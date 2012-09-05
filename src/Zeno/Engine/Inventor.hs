@@ -47,7 +47,7 @@ splitRewrites var con_term = local (concatMap split)
     | not (var `elem` Var.freeZVars eq) = [eq]
     | otherwise = map update rec_vars
     where
-    update rec_var = replaceWithin (Term.Var var) (Term.Var rec_var) eq 
+    update rec_var = REPLACEWITHIN?? (Term.Var var) (Term.Var rec_var) eq 
     
     
 fill :: (MonadState ZenoState m, MonadPlus m) =>
@@ -106,6 +106,6 @@ fill (Checker.Context context fill_type) desired_value = do
       where
       all_sources = Set.insert cpath (Var.allSources cvar)
       con_term' = Var.addSources all_sources con_term
-      reduced_term = normalise $ replaceWithin cterm con_term' term
+      reduced_term = normalise $ REPLACEWITHIN?? cterm con_term' term
       (con:vars) = map Term.fromVar (Term.flattenApp con_term)
     

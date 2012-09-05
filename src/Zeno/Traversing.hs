@@ -5,12 +5,13 @@ module Zeno.Traversing (
   withinList, strictlyWithinList,
   contains, containsStrictly,
   removeSupersets, removeSubsets, anyWithin,
+  replaceWithin,
   HasVariables (..), isFreeIn
 ) where
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Utils
+import Zeno.Utils ( mapM_to_fmap )
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -32,6 +33,12 @@ anyWithin p = getAny . foldWithin (Any . p)
 withinList :: WithinTraversable t f => f -> [t]
 withinList = foldWithin return
 
+replaceWithin :: (Eq t, WithinTraversable t f) => t -> t -> f -> f
+replaceWithin from to = mapWithin repl
+  where
+  repl x | x == from = to
+         | otherwise = x
+
 strictlyWithinList :: (WithinTraversable t t, Eq t) => t -> [t]
 strictlyWithinList t = filter (/= t) (withinList t)
 
@@ -49,10 +56,16 @@ removeSupersets :: (WithinTraversable a a, Eq a) => [a] -> [a]
 removeSupersets sets = filter (not . isSuperset) sets
   where isSuperset set = any (containsStrictly set) sets
   
--- | This is here for want of a better place.
+-- * These are here for want of a better place.
+
 class Ord (Var a) => HasVariables a where
   type Var a
   freeVars :: a -> Set (Var a) 
+  
+instance (HasVariables a, HasVariables b, Var a ~ Var b) => 
+    HasVariables (a, b) where
+  type Var (a, b) = Var a
+  freeVars (x, y) = freeVars x ++ freeVars y
   
 isFreeIn :: HasVariables a => Var a -> a -> Bool
 isFreeIn v = Set.member v . freeVars 

@@ -8,7 +8,7 @@ module Zeno.Term (
   function, isNormal, isCaseNormal, isFixTerm, 
   caseSortFix, reannotate, freshenCaseSort, 
   mapCaseBranches, mapCaseBranchesM, 
-  stripLambdas, etaReduce,
+  stripLambdas, etaReduce, freshenVar
 ) where
 
 import Prelude ()
@@ -52,8 +52,8 @@ type TermMap a = Map (Term a) (Term a)
 instance Empty a => Empty (Term a) where
   empty = Var empty
 
-instance HasVariables a => HasVariables (Term a) where
-  type Var (Term a) = Var a
+instance (HasVariables a, Var a ~ a) => HasVariables (Term a) where
+  type Var (Term a) = a
   
   freeVars (App e1 e2) = freeVars e1 ++ freeVars e2
   freeVars (Var x) = freeVars x
@@ -64,8 +64,8 @@ instance HasVariables a => HasVariables (Term a) where
     where
     altVars = concatMap freeVars (caseOfAlts cse)
   
-instance HasVariables a => HasVariables (Alt a) where
-  type Var (Alt a) = Var a
+instance (HasVariables a, Var a ~ a) => HasVariables (Alt a) where
+  type Var (Alt a) = a
   
   freeVars (Alt _ vars e) = 
     Set.difference (freeVars e) (Set.fromList vars)
@@ -149,8 +149,8 @@ caseSortFix _ = Nothing
 freshenCaseSort :: MonadUnique m => CaseSort a -> m (CaseSort a)
 freshenCaseSort SplitCase = return SplitCase
 freshenCaseSort (FoldCase name fix) = do
-  new_name <- Name.clone name
-  return (FoldCase new_name fix)
+  fresh_name <- Name.freshen name
+  return (FoldCase fresh_name fix)
 
 isNormal :: Ord a => Term a -> Bool
 isNormal = anyWithin isFix
@@ -210,6 +210,14 @@ mapCaseBranchesM f other = f other
 mapCaseBranches :: (Term a -> Term a) -> Term a -> Term a
 mapCaseBranches f = runIdentity . mapCaseBranchesM (Identity . f)
     
+freshenVar :: (MonadUnique m, Name.Has a,
+    Substitution.Apply (Term a) t, Ord a) => 
+  a -> t -> m t
+freshenVar var term = do
+  fresh_var <- Name.freshen var
+  Substitution.replace (Var var) (Var fresh_var) term
+  
+
 -- | Resets all the 'CaseSort' annotations within a term.
 -- Only run this on top-level terms, if you are within 'Fix'ed variables
 -- this could cause inconsistency.
@@ -257,103 +265,6 @@ instance Foldable IgnoreAnnotations where
     go (Lam x t) = f x ++ go t
     go (Fix x t) = f x ++ go t
     go (Cse _ t as) = go t ++ foldMap (go . altTerm) as
-
-instance Ord a => Unifiable (Term a) where
-  type UniTerm (Term a) = Term a
-  type UniVar (Term a) = a
-
-  unifier (Var v1) (Var v2)
-    | v1 == v2 = 
-      return empty
-  unifier (App f1 a1) (App f2 a2) =
-    unifier f1 f2 `Substitution.unionM` unifier a1 a2
-  unifier (Lam v1 x1) (Lam v2 x2) = do
-    x2' <- Substitution.replace (Var v2) (Var v1) x2
-    unifier x1 x2'
-  unifier (Fix v1 x1) (Fix v2 x2) = do
-    x2' <- Substitution.replace (Var v2) (Var v1) x2
-    unifier x1 x2'
-  unifier (Cse _ t1 as1) (Cse _ t2 as2)
-    | length as1 /= length as2 = mzero
-    | otherwise = 
-      unifier t1 t2 `Substitution.unionM` alts_unifier
-    where
-    as1s = sortWith altCon as1
-    as2s = sortWith altCon as2
-    alts_unifier = 
-      Substitution.unions
-      =<< zipWithM  unifier as1s as2s
-  unifier x1 x2
-    -- Pretty sure this should never occur...
-    | x1 == x2 = assert False $ return empty
-  unifier (Var x) t =
-    return (Substitution.singleton x t)
-  unifier _ _ =
-    mzero
-    
-instance Ord a => Unifiable (Alt a) where
-  type UniTerm (Alt a) = Term a
-  type UniVar (Alt a) = a
-
-  unifier (Alt k1 vs1 t1) (Alt k2 vs2 t2)
-    | k1 /= k2 = mzero
-    | otherwise = do
-      t2' <- Substitution.apply replace_vars t2
-      unifier t1 t2' 
-    where
-    replace_vars = Substitution.fromList 
-      $ zip (map Var vs2) (map Var vs1)
-    
--- Instead of defining 'WithinTraversable (Term a) (Term a)'
--- we define it for 'TermTraversable' things, so we get 
--- 'WithinTraversable' for all these things for free. 
--- 'Term's are themselves 'TermTraversable'.
-instance (Ord a, TermTraversable t a) => 
-  WithinTraversable (Term a) t where
-    
-  mapWithinM f = mapTermsM mapWithinT
-    where
-    mapWithinT (App lhs rhs) =
-      f =<< return App `ap` mapWithinT lhs `ap` mapWithinT rhs
-    mapWithinT (Cse srt lhs alts) =
-      f =<< return (Cse srt) `ap` mapWithinT lhs 
-                             `ap` mapM mapWithinA alts
-    mapWithinT (Lam var rhs) =
-      f =<< return (Lam var) `ap` mapWithinT rhs
-    mapWithinT (Fix var rhs) =
-      f =<< return (Fix var) `ap` mapWithinT rhs
-    mapWithinT expr =
-      f =<< return expr
-      
-    mapWithinA (Alt con vars term) = 
-      Alt con vars `liftM` mapWithinT term
-      
-instance (Ord a, TermTraversable t a) =>
-  Substitution.Apply (Term a) t where
-  
-  apply map = mapTermsM applyTop
-    where
-    applyTop term = do
-      term' <- app term
-      return (Substitution.try map term')
-  
-    app (Lam var rhs) = 
-      Lam var (substituteT sub' rhs)
-      where sub' = removeVariable var sub
-    subst (Fix var rhs) =
-      Fix var (substituteT sub' rhs)
-      where sub' = removeVariable var sub
-    subst (App lhs rhs) =
-      App (substituteT sub lhs) (substituteT sub rhs)
-    subst (Cse srt term alts) = 
-      Cse srt (substituteT sub term) (map (substituteA sub) alts)
-    subst other = other
-      
-    substituteA sub (Alt con vars term) =
-      Alt con vars (substituteT sub' term)
-      where
-      sub' = concatMap (Endo . removeVariable) vars `appEndo` sub
-      
     
 instance Empty (CaseSort a) where
   empty = SplitCase
@@ -377,12 +288,26 @@ instance (Eq (SimpleType a), Typed a,
     t1@(Type.Fun t1a t1r) = typeOf e1
     t2 = typeOf e2
   
-isOperator :: String -> Bool
-isOperator | error "find where isOperator should go" = any (not . isNormalChar)
-  where
-  isNormalChar :: Char -> Bool
-  isNormalChar '_' = True
- -- isNormalChar '$' = True
-  isNormalChar '.' = True
-  isNormalChar c = isAlphaNum c
+-- Instead of defining 'WithinTraversable (Term a) (Term a)'
+-- we define it for 'TermTraversable' things, so we get 
+-- 'WithinTraversable' for all these things for free. 
+-- 'Term's are themselves 'TermTraversable' 
+-- so we still get it for 'Term a'
+instance TermTraversable t a => WithinTraversable (Term a) t where
+  mapWithinM f = mapTermsM mapWithinT
+    where
+    mapWithinT (App lhs rhs) =
+      f =<< return App `ap` mapWithinT lhs `ap` mapWithinT rhs
+    mapWithinT (Cse srt lhs alts) =
+      f =<< return (Cse srt) `ap` mapWithinT lhs 
+                             `ap` mapM mapWithinA alts
+    mapWithinT (Lam var rhs) =
+      f =<< return (Lam var) `ap` mapWithinT rhs
+    mapWithinT (Fix var rhs) =
+      f =<< return (Fix var) `ap` mapWithinT rhs
+    mapWithinT expr =
+      f =<< return expr
+      
+    mapWithinA (Alt con vars term) = 
+      Alt con vars `liftM` mapWithinT term
 

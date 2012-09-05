@@ -23,8 +23,7 @@ test_floatLazy =
   app <- Test.term "app"
   floated_app <- floatLazyArgsOut app
   
-  return 
-    $ Test.assertAlphaEq floated_app app2
+  Test.assertAlphaEq floated_app app2
   where
   properly_floated_app = unlines $
     [ "fun (xs:list) (ys:list) -> "
