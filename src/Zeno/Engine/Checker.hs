@@ -28,22 +28,40 @@ maxDepth = 6
 -- possible values this term could take, by assigning values
 -- to its free variables.
 explore :: forall m . MonadUnique m => ZTerm -> m [ZTerm]
-explore term = do
-  liftM Set.toList
-    $ Term.foldCaseBranchesM (expl maxDepth) term
+explore term =
+  liftM nubOrd
+    $ expl maxDepth term
   where
   -- Helper function for explore which takes a depth parameter
   -- starting at 'maxDepth' and decreasing with each unrolling.
-  expl :: Int -> ZTerm -> m (Set ZTerm)
-  expl depth term
-    | depth == 0 = return
-      $ if Var.isConstructorTerm term
-        then Set.singleton term
-        else Set.empty
-    | otherwise = do
-        unrolled <- Context.unrollInnermost term
-        Term.foldCaseBranchesM (expl (depth - 1)) unrolled
-
+  expl :: Int -> ZTerm -> m [ZTerm]
+  
+  -- Descend into the branches of a pattern match
+  expl depth (Term.Cse _ cse_of cse_alts) = 
+    concatMapM explAlt cse_alts
+    where
+    explAlt (Term.Alt alt_con alt_vars alt_term)
+      | not (Term.isVar cse_of) = expl depth alt_term
+      
+      -- If we are pattern matching on a variable we update the value of
+      -- that value down every branch with the pattern it was matched to.
+      -- We then reverse this substitution on the returned values.
+      | otherwise = do
+        alt_term' <- Substitution.replace cse_of alt_pattern alt_term
+        term_values <- expl depth alt_term'
+        mapM (Substitution.replace alt_pattern cse_of) term_values
+      where
+      alt_pattern = Term.unflattenApp
+        $ map Term.Var (alt_con : alt_vars)
+        
+  expl 0 term 
+    | Term.isNormal term = return [term]
+    | otherwise = return []
+      
+  expl depth term = do
+    unrolled <- Context.unrollInnermost term
+    expl (depth - 1) unrolled
+      
 
 guessContext :: (MonadUnique m, MonadFailure m) => ZTerm -> m Context
 guessContext term = do

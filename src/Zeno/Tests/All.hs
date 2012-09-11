@@ -22,7 +22,7 @@ tests = Test.list
   , Context.tests
   , Eval.tests 
   , Checker.tests
-  , Simp.tests
+  , Simp.tests 
   , Factoring.tests
   , Deforester.tests ]
   

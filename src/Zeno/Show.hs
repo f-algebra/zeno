@@ -158,8 +158,7 @@ instance (Ord a, Show a) => Show (Term a) where
     -- Test whether we have an asbtracted variable being passed straight
     -- into a pattern match, in which case we can eta-reduce the 
     -- lambda and the pattern match, in the notation at least
-    -- Removed for clarity
-    is_eta_case = Term.isCse rhs
+    is_eta_case = False && Term.isCse rhs
       && Term.caseOfTerm rhs == Term.Var (last vars)
     
     vars' | is_eta_case = butlast vars

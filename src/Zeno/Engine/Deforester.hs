@@ -54,9 +54,7 @@ deforest term = do
     $ Term.unflattenApp (inner_fix_body : inner_args) 
   
   -- We then push the outer context down into every branch 
-  cxt_applied <- 
-    Term.mapCaseBranchesM (Eval.normalise . Context.fill outer_cxt)
-    $ unrolled
+  cxt_applied <- Context.pushInside outer_cxt unrolled
   
   -- Create a new function variable for the new function 
   -- we are inventing
@@ -104,11 +102,11 @@ deforest term = do
     
   -- Applied down every branch of the pattern matches 
   -- in the innermost term.
-  -- Fails (returns 'Nothing') if any recursive calls 
+  -- Fails if any recursive calls 
   -- to the unrolled innermost term remain.
   -- Read 'b_term' as "branch term".
-  deforestBranch :: ZVar -> ZTerm -> m ZTerm
-  deforestBranch new_fun_var b_term
+  deforestBranch :: ZVar -> [(ZTerm, ZTerm)] -> ZTerm -> m ZTerm
+  deforestBranch new_fun_var _ b_term
     | null rec_calls = return b_term
     | otherwise = do
     -- The new variables to generalise recursive innermost function calls

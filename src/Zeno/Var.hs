@@ -54,7 +54,9 @@ instance Ord ZVar where
   compare = compare `on` name
   
 instance Show ZVar where
-  show = show . name
+  show var 
+    | isConstructor var = show (name var)
+    | otherwise = show (Name.uniqueId (Name.get var))
   
 instance Name.Has ZVar where
   get = name

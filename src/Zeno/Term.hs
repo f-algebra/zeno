@@ -131,7 +131,7 @@ isFixTerm :: Term a -> Bool
 isFixTerm = isFix . head . flattenApp
 
 isNormal :: Ord a => Term a -> Bool
-isNormal = anyWithin isFix
+isNormal = not . anyWithin isFix
 
 freeCaseTags :: Ord a => Term a -> Set a
 freeCaseTags (App t1 t2) = freeCaseTags t1 `mappend` freeCaseTags t2
@@ -188,28 +188,36 @@ etaReduce (Lam x (App f y))
   | (Var x) == y = etaReduce f
 etaReduce other = other
 
-mapCaseBranchesM :: (Substitution.Apply (Term a) (Term a), MonadUnique m) => 
-  (Term a -> m (Term a)) -> Term a -> m (Term a)
-mapCaseBranchesM f (Cse srt cse_of alts) =
-  return (Cse srt cse_of) 
-    `ap` mapM mapAltM alts
+mapCaseBranchesM :: forall a m . 
+    (Substitution.Apply (Term a) (Term a), Monad m) => 
+  ([(Term a, Term a)] -> Term a -> m (Term a)) -> Term a -> m (Term a)
+mapCaseBranchesM func = flip runReaderT [] . doMap
   where
-  mapAltM (Alt con vars term) = do
-    term' <- Substitution.replace cse_of alt_term term
-    return (Alt con vars) 
-      `ap` mapCaseBranchesM f term'
+  doMap :: Term a -> ReaderT [(Term a, Term a)] m (Term a)
+    
+  doMap (Cse srt cse_of alts) =
+    return (Cse srt cse_of) `ap` mapM doMapAlt alts
     where
-    alt_term = unflattenApp $ map Var (con : vars)
-mapCaseBranchesM f other = f other
+    doMapAlt (Alt con vars term) =
+      local ((cse_of, pattern) :)
+        $ return (Alt con vars) `ap` doMap term
+      where
+      pattern = unflattenApp
+        $ map Var (con : vars)
+        
+  doMap term = do
+    matches <- ask
+    lift (func matches term)
 
 foldCaseBranchesM :: forall a m b . (Substitution.Apply (Term a) (Term a), 
-    MonadUnique m, Monoid b) =>
-  (Term a -> m b) -> Term a -> m b
-foldCaseBranchesM f = execWriterT . mapCaseBranchesM tellAndReturn
+    Monad m, Monoid b) =>
+  ([(Term a, Term a)] -> Term a -> m b) -> Term a -> m b
+foldCaseBranchesM func = 
+  execWriterT . mapCaseBranchesM tellAndReturn
   where
-  tellAndReturn :: Term a -> WriterT b m (Term a)
-  tellAndReturn term = do
-    tell =<< lift (f term)
+  tellAndReturn :: [(Term a, Term a)] -> Term a -> WriterT b m (Term a)
+  tellAndReturn matches term = do
+    tell =<< lift (func matches term)
     return term
     
 instance (Eq (SimpleType a), Typed a, 

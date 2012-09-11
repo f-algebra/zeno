@@ -32,7 +32,7 @@ test_guessContext = do
     $ Test.run $ do
   Test.loadPrelude
   Test.newVar "xs" "list"
-  Test.newVar "n" "nat"
+  var_n <- Test.newVar "n" "nat"
   
   -- Test that the context of "rev (xs ++ [n])" is "cons n _"
   revapp <- Test.term "rev (app xs (cons n nil))"
@@ -45,8 +45,17 @@ test_guessContext = do
 
   -- Test that the context of a recursive identity function
   -- over "n" is just "n", i.e. a constant context
-  
+  id_n <- Test.term id_n_def
+  cxt2 <- Fail.success
+    $ Checker.guessContext id_n
+  let test2 = Test.assert $ Context.isConstant cxt2
+      test3 = Test.assert $ Context.fromConstant cxt2 == Term.Var var_n
   
   return 
-    $ Test.list [test1]
+    $ Test.list [test1, test2, test3]
+    
+  where
+  id_n_def = unlines
+    [ "(fix (idr:nat->nat) in fun (x:nat) -> "
+    , "  case x of 0 -> 0 | succ y -> succ (idr y)) n" ]
   

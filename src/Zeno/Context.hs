@@ -3,7 +3,8 @@ module Zeno.Context (
   Context, contextTerm,
   new, fill, fillType, matches, 
   compose, identity, null, 
-  innermost, unrollInnermost
+  innermost, unrollInnermost, pushInside,
+  isConstant, fromConstant
 ) where
 
 import Prelude ()
@@ -50,6 +51,19 @@ compose :: Context -> Context -> Context
 compose left right = 
   Context (fill left (contextTerm right)) (fillType right)
   
+-- | Whether a context has a gap, viz. it will be unchanged by being filled,
+-- viz. it's just a term.
+isConstant :: Context -> Bool
+isConstant (Context term _) = 
+  not $ anyWithin (== gapTerm) term
+
+-- | Return the constant term if the given context is a constant context,
+-- see 'isConstant'.
+fromConstant :: Context -> ZTerm
+fromConstant cxt@(Context term _) = 
+  assert (isConstant cxt) term
+  
+  
 null :: Context -> Bool
 null (Context term _) = term == gapTerm 
 
@@ -92,11 +106,23 @@ innermost term
 unrollInnermost :: MonadUnique m => ZTerm -> m ZTerm
 unrollInnermost term = do
   unrolled <- Eval.unrollFix inner_term
-  Term.mapCaseBranchesM pushContextIn unrolled
+  pushInside outer_cxt unrolled
   where
   (outer_cxt, inner_term) = innermost term
-  pushContextIn = Eval.normalise . fill outer_cxt
-
+    
+-- | Applies a given context inside every pattern match branch of a given term.
+-- Makes sure that the variables bindings created by these pattern matches
+-- are applied to the context down each branch.
+pushInside :: MonadUnique m => Context -> ZTerm -> m ZTerm
+pushInside outer_cxt = Term.mapCaseBranchesM pushIn
+  where
+  pushIn bindings term = do
+    term' <- Substitution.applyList binding_maps
+      $ fill outer_cxt term
+    Eval.normalise term'
+    where
+    var_bindings = filter (Term.isVar . fst) bindings
+    binding_maps = map (uncurry Substitution.singleton) var_bindings
   
 instance TermTraversable Context ZVar where
   mapTermsM f (Context term typ) = 

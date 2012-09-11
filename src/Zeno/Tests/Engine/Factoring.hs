@@ -78,7 +78,8 @@ test_nullFactoring =
   app_n <- floatLazyArgsOut 
     =<< Test.term "app xs (cons n nil)"
   
-  mby_factored <- Fail.toMaybe (Factoring.value app_n)
+  mby_factored <- Fail.toMaybe 
+    $ Factoring.value app_n
   
   return
     $ Test.assert (isNothing mby_factored)

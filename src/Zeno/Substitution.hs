@@ -27,6 +27,13 @@ newtype Map a b = MapWrap { unwrapMap :: DMap.Map a b }
 -- i.e. is a 'MonadUnique'.
 class (Ord t, WithinTraversable t f) => Apply t f where
   apply :: MonadUnique m => Map t t -> f -> m f
+  apply = applyList . return
+  
+  -- | Applies a list of mappings, one after the other.
+  -- Useful if mappings may apply to later mappings.
+  -- TODO replace this with a method to collapse such a list into one mapping
+  applyList :: MonadUnique m => [Map t t] -> f -> m f
+  applyList list = concatEndosM (map apply list)
 
 -- | Applies a substitution consisting of one single replacement,
 -- the first argument for the second.
