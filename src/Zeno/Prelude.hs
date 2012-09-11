@@ -16,6 +16,8 @@ module Zeno.Prelude
   module Control.Monad.Fix,
   module Control.Monad.Error,
   module Control.Exception,
+  module Control.Unique,
+  module Control.Failure,
   module Data.Maybe,
   module Data.Either,
   module Data.Monoid,
@@ -32,10 +34,10 @@ module Zeno.Prelude
   module Data.IntSet,
   module Data.Function,
   module Data.Text,
+  module Data.Empty,
   module Debug.Trace,
   module System.IO.Unsafe,
   
-  Empty (..),
   (++), concat, intercalate, map, void,
   concatMap, concatMapM, partitionM,
   concatEndos, concatEndosM,
@@ -43,8 +45,7 @@ module Zeno.Prelude
   minimalBy, nubOrd, elemOrd, intersectOrd, countOrd,
   fromRight, fromLeft, traceMe, setAt, firstM, butlast,
   wrapFunctor, unwrapFunctor, FunctorWrapper,
-  liftMaybe, fromMaybeT, takeIndices, isNub,
-  foldl1M,
+  takeIndices, isNub, foldl1M,
 )
 where
 
@@ -71,6 +72,8 @@ import Control.Monad.Identity ( Identity (..) )
 import Control.Monad.Trans.Identity ( IdentityT (..) )
 import Control.Monad.Fix
 import Control.Monad.Error ( ErrorT (..), Error (..), throwError, catchError )
+import Control.Failure ( MonadFailure )
+import Control.Unique ( Unique, MonadUnique )
 import Control.Exception ( assert )
 
 import Data.Maybe
@@ -94,6 +97,7 @@ import Data.IntSet ( IntSet )
 import Data.Function ( on )
 import Data.Text ( Text )
 import Data.String 
+import Data.Empty
 
 import Debug.Trace
 import System.IO.Unsafe
@@ -113,14 +117,6 @@ map = fmap
 
 concat :: Monoid m => [m] -> m
 concat = mconcat
-
--- | Sometimes you need an 'mempty' element, but don't have an
--- appropriate 'mappend', so 'Empty' is a convenient superset of 'Monoid'.
-class Empty a where
-  empty :: a
-  
-instance Empty (a -> a) where
-  empty = id
   
 instance Monad m => Monoid (Kleisli m a a) where
   mempty = arr id
@@ -178,7 +174,6 @@ concatEndos = appEndo . mconcat . map Endo . toList
 concatEndosM :: (Monad m, Foldable f) => f (a -> m a) -> a -> m a
 concatEndosM = runKleisli . mconcat . map Kleisli . toList
 
-
 instance Functor First where
   fmap f = First . fmap f . getFirst
 
@@ -191,7 +186,7 @@ nubOrd :: Ord a => [a] -> [a]
 nubOrd = Set.toList . Set.fromList
 
 isNub :: forall a . Ord a => [a] -> Bool
-isNub = isNothing . foldrM dupM Set.empty
+isNub = isJust . foldrM dupM Set.empty
   where
   dupM :: a -> Set a -> Maybe (Set a)
   dupM x xs = do
@@ -242,15 +237,6 @@ butlast :: [a] -> [a]
 butlast [] = error "Zeno.Prelude.butlast given empty list"
 butlast [x] = []
 butlast (x:xs) = x : (butlast xs)
-
-liftMaybe :: MonadPlus m => Maybe a -> m a
-liftMaybe Nothing = mzero
-liftMaybe (Just x) = return x
-
-fromMaybeT :: Monad m => m a -> MaybeT m a -> m a
-fromMaybeT def = join
-  . liftM (maybe def return)
-  . runMaybeT
   
 fromRight :: Either a b -> b
 fromRight (Right b) = b

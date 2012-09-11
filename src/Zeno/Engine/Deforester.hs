@@ -7,7 +7,6 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification 
 import Zeno.Name ( Name )
-import Zeno.Unique ( MonadUnique  )
 import Zeno.Var ( ZTerm, ZVar, ZTermMap )
 import Zeno.Type ( typeOf )
 import Zeno.Term ( TermTraversable (..) )
@@ -24,6 +23,7 @@ import qualified Zeno.Context as Context
 import qualified Zeno.Show as Show
 import qualified Zeno.Engine.Factoring as Factoring
 
+import qualified Control.Failure as Fail
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Test.HUnit as HUnit
@@ -35,17 +35,17 @@ simplify = mapWithinM simp
   simp term 
     | not (Var.isFunctionCall term) = return term
     | otherwise = do
-      term2 <- floatLazyArgsOut term
-      term3 <- fromMaybeT (return term2) 
-        $ deforest term2
-      
-      term4 <- fromMaybeT (return term3)
-        $ (liftM (traceMe (show term3 ++ "\n==>\n"))) $ Factoring.value term3
-      
-      return term4
-      
+        term2 <- floatLazyArgsOut term
+        term3 <- Fail.catchWith term2
+          $ deforest term2
+        
+        term4 <- Fail.catchWith term3
+          $ Factoring.value term3
+        
+        return term4
 
-deforest :: forall m . (MonadUnique m, MonadPlus m) => 
+      
+deforest :: forall m . (MonadUnique m, MonadFailure m) => 
   ZTerm -> m ZTerm
 deforest term = do
   -- The inner term with the 'Term.Fix' of the leftmost function removed
@@ -61,7 +61,7 @@ deforest term = do
   -- Create a new function variable for the new function 
   -- we are inventing
   fun_var <- Var.invent fun_type Var.Universal
-    
+  
   -- Apply 'deforestBranch' down each branch of the unrolled
   -- innermost function which has had the context pushed inside it, 
   -- hopefully creating a body for our new function.
@@ -71,17 +71,18 @@ deforest term = do
     $ cxt_applied
   
   -- Create the new fix term for our new function
-  -- remembering to reannotate since we have a new fix variable
-  new_fix <- Term.reannotate
-    $ Term.Fix fun_var
-    $ Term.unflattenLam free_vars deforested_body
+  let new_fix = Term.Fix fun_var
+        $ Term.unflattenLam free_vars deforested_body
     
   -- Apply every free variable as an argument to our new function
   let new_term = Term.unflattenApp (new_fix : map Term.Var free_vars)
   
-  if new_term `alphaEq` term
-    then return term
-    else return new_term
+  -- Only return the new term is deforestation has actually changed,
+  -- anything, otherwise we are just refreshing variables unnecessarily.
+  return $ 
+    if new_term `alphaEq` term
+    then term
+    else new_term
   where
   -- The inner_term we will unfold to perform deforestation
   -- and the context that surrounds it
@@ -105,70 +106,86 @@ deforest term = do
   -- in the innermost term.
   -- Fails (returns 'Nothing') if any recursive calls 
   -- to the unrolled innermost term remain.
+  -- Read 'b_term' as "branch term".
   deforestBranch :: ZVar -> ZTerm -> m ZTerm
-  deforestBranch new_fun_var b_term = do
+  deforestBranch new_fun_var b_term
+    | null rec_calls = return b_term
+    | otherwise = do
     -- The new variables to generalise recursive innermost function calls
     gen_vars <- mapM makeGenVar rec_calls
     
-    -- Generalise innermost recursive calls
-    gen_map <- Substitution.unions 
+    -- Generalise innermost recursive calls.
+    -- The unioning option should not fail, as none of these
+    -- substitutions interfere with each other.
+    gen_map <- Fail.success 
+      $ Substitution.unions 
       $ zipWith Substitution.singleton rec_calls 
       $ map Term.Var gen_vars
     gen_b_term <- Substitution.apply gen_map b_term
-        
+    
     -- Simplify this generalised term    
     simp_gen_b_term <- simplify gen_b_term
     
+    -- The substitutions which will match the original call to the
+    -- innermost function to its recursive call.
+    unifying_mappings <-
+      liftM (map Term.toTermMap)
+      $ mapM (unifier inner_rec_call) rec_calls
+    
+    -- Recursive calls to the new function we are inventing
+    -- unified with recursive calls to the innermost function
+    new_rec_calls <- forM unifying_mappings
+      $ flip Substitution.apply repl_term
+    
     -- Replace any instances of the original term that have now
-    -- been generalised with the new function we are inventing
-    replace_gen_vars <- Substitution.unions
+    -- been generalised with the new function we are inventing.
+    replace_gen_vars <- Fail.success
+      $ Substitution.unions
       $ zipWith makeReplacement gen_vars new_rec_calls
-    new_b_term <- Substitution.apply replace_gen_vars simp_gen_b_term
-        
+    
+    new_b_term <-
+      Substitution.apply replace_gen_vars simp_gen_b_term
+    
     -- We fail if any recursive innermost calls remain
     -- i.e. if any generalisation variables remain
-    guard $ not $ any (flip elem gen_vars) new_b_term
+    Fail.when $ any (flip elem gen_vars) new_b_term
     
     return new_b_term
     where
     -- 'rec_calls' is the set of recursive calls to the unrolled 
     -- innermost function down this branch
-    sub_terms = Set.fromList (withinList b_term)
-    rec_calls = Set.toList $ Set.filter isRecCall sub_terms
+    rec_calls :: [ZTerm]
+    rec_calls = Set.toList 
+      $ Set.filter isRecCall 
+      $ Set.fromList (withinList b_term)
     
-    isRecCall term 
-      | (Term.Var func : args) <- Term.flattenApp term = 
-          func == inner_fix_var
-          && length args == length inner_args
-      | otherwise = False
-    
-    -- Creates a new variable to generalise an innermost recursive call
-    makeGenVar rec_call =
-      assert (typeOf rec_call == typeOf inner_term)
-      $ Var.invent (typeOf rec_call) Var.Universal
+    -- The new term we are replacing our generalised variables 
+    -- (old recursive calls) with.
+    repl_term = Term.unflattenApp
+      $ map Term.Var (new_fun_var : free_vars)
     
     -- What a recursive call to the inner function must unify with
     -- i.e. it will have structurally smaller arguments
     inner_rec_call = Term.unflattenApp 
       $ (Term.Var inner_fix_var) : inner_args
       
-    -- The substitutions which will match the original call to the
-    -- innermost function to its recursive call
-    unifying_substs :: [ZTermMap]
-    unifying_substs =
-      map (Map.mapKeysMonotonic Term.Var)
-      $ mergeUnifiers 
-      $ map (unifier inner_rec_call) rec_calls
-    
-    -- Recursive calls to the new function we are inventing
-    -- unified with recursive calls to the innermost function
-    new_rec_calls =
-      map (\sub -> substitute sub repl_term) unifying_substs
-      where
-      -- A recursive call to the new function we are inventing
-      repl_term = Term.unflattenApp
-        $ map Term.Var (new_fun_var : free_vars)
+    -- Creates a new variable to generalise an innermost recursive call
+    makeGenVar :: ZTerm -> m ZVar
+    makeGenVar rec_call =
+      assert (typeOf rec_call == typeOf inner_term)
+      $ Var.invent (typeOf rec_call) Var.Universal
       
+    -- Is a term a recursive call to our original function?
+    isRecCall :: ZTerm -> Bool
+    isRecCall term 
+      | (Term.Var func : args) <- Term.flattenApp term = 
+          func == inner_fix_var
+          && length args == length inner_args
+      | otherwise = False
+      
+    -- Take a generalised variable, and the recursive call to 
+    -- our new function which should represent its replacement
+    -- and the 'ZTermMap' representing this replacement is returned.
     makeReplacement :: ZVar -> ZTerm -> ZTermMap
     makeReplacement gen_var = 
       Substitution.singleton 

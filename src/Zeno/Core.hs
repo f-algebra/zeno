@@ -10,14 +10,13 @@ module Zeno.Core (
 import Prelude ()
 import Zeno.Prelude hiding ( print )
 import Zeno.Var ( ZTerm, ZClause, ZDataType, ZVar, ZEquation )
-import Zeno.Unique ( Unique, MonadUnique )
 
 import qualified Zeno.Name as Name
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
 import qualified Zeno.DataType as DataType
 import qualified Data.Map as Map
-import qualified Zeno.Unique as Unique
+import qualified Control.Unique as Unique
 import qualified Zeno.Show as Show
 
 type StringMap = Map String
@@ -60,7 +59,7 @@ instance Empty ZenoTheory where
                         theorems = mempty }
    
 instance Empty ZenoState where
-  empty = ZenoState   { uniques = Unique.stream,
+  empty = ZenoState   { uniques = Unique.primaryStream,
                         facts = mempty,
                         theory = empty,
                         output = mempty }
@@ -93,11 +92,7 @@ defineProp name cls = modifyTheory $ \z -> z
   { props = Map.insert name cls (props z) }
   
 lookupTerm :: MonadState ZenoState m => String -> m (Maybe ZTerm)
-lookupTerm name = do
-  maybe_term <- gets (Map.lookup name . terms . theory)
-  case maybe_term of
-    Nothing -> return Nothing
-    Just term -> Just `liftM` unwrapFunctor (Var.distinguishFixes term)
+lookupTerm name = gets (Map.lookup name . terms . theory)
 
 lookupType :: MonadState ZenoState m => String -> m (Maybe ZDataType)
 lookupType name = gets (Map.lookup name . types . theory)

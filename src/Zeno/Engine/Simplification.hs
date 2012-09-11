@@ -7,13 +7,12 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification 
 import Zeno.Name ( Name )
-import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZVar )
 import Zeno.Type ( typeOf )
 import Zeno.Context ( Context (..) )
 
 import qualified Zeno.Evaluation as Eval
-import qualified Zeno.Unique as Unique
+import qualified Control.Unique as Unique
 import qualified Zeno.Type as Type
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -42,9 +41,8 @@ floatLazy orig_term@(Term.Fix old_fix_var old_fix_body) = do
   
   -- Using this new body we can construct the new 'Fix'
   -- we also reannotate the case-splits since we have a new fix var
-  new_fix <- Term.reannotate
-    $ Term.Fix new_fix_var  
-    $ Term.unflattenLam strict_vars new_body
+  let new_fix = Term.Fix new_fix_var  
+        $ Term.unflattenLam strict_vars new_body
         
   -- The resulting term needs to have the same arguments as the
   -- original, so we create a set of outer lambdas and only pass
@@ -55,12 +53,12 @@ floatLazy orig_term@(Term.Fix old_fix_var old_fix_body) = do
         $ new_fix : (map Term.Var strict_vars)
         
   -- Whether the original function definition is equivalent to the new one
-  nothing_changed <- new_term `alphaEq` orig_term
+  let nothing_changed = new_term `alphaEq` orig_term
         
   -- If there were no lazy variables we assert that the function 
   -- definition does not change
   let sanityCheck = not (null lazy_var_ixs) || nothing_changed
-        
+  
   return
     $ assert sanityCheck
     $ if nothing_changed then orig_term else new_term 

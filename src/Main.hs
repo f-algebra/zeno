@@ -25,6 +25,10 @@ import qualified Zeno.Parsing.ZML as ZML
 -- will need some method of (re)annotating these names,
 -- maybe freshen all Cse's in substitution mapping elements
 
+-- Potential unsoundness: The 'union' operation on substitution maps
+-- respects only structural equality, whereas the substitution operation
+-- itself uses alpha-equality.
+
 zenoState :: IORef ZenoState
 zenoState = unsafePerformIO (newIORef empty)
 
@@ -66,7 +70,7 @@ command ("explore", arg) = do
   -}
 command ("evaluate", arg) = do
   term <- ZML.readTerm arg
-  term' <- Facts.none $ Eval.normalise term
+  term' <- Eval.normalise term
   Zeno.print (show term')
 command ("simplify", arg) = do
   term <- ZML.readTerm arg

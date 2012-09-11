@@ -1,15 +1,16 @@
 module Zeno.Substitution (
   Map, Apply (..),
-  replace, isOneToOne, try,
+  replace, isOneToOne,
   union, unionM, unions,
-  singleton, elems, null, fromList, toList
+  singleton, elems, null, 
+  fromList, toList, mapKeys
 ) where
 
 import Prelude ()
 import Zeno.Prelude hiding ( Map, null, union, toList )
 import Zeno.Traversing
-import Zeno.Unique ( MonadUnique )
 
+import qualified Control.Failure as Fail
 import qualified Data.Map as DMap
 import qualified Data.Set as Set
 
@@ -17,13 +18,14 @@ import qualified Data.Set as Set
 -- accidently use 'Map.union' or the 'Monoid' instance. 
 -- The union of two substitutions is not always a valid substitution
 newtype Map a b = MapWrap { unwrapMap :: DMap.Map a b }
+  deriving ( Functor, Foldable, Traversable )
 
 -- | Allowing the substitution of things of type 't' within something of 
 -- type 'f', e.g. variables within a term, or terms within a term.
 -- Substitution may generate new variables if there is a naming clash
 -- so the output must be able to create unique identifiers, 
 -- i.e. is a 'MonadUnique'.
-class WithinTraversable t f => Apply t f where
+class (Ord t, WithinTraversable t f) => Apply t f where
   apply :: MonadUnique m => Map t t -> f -> m f
 
 -- | Applies a substitution consisting of one single replacement,
@@ -34,18 +36,11 @@ replace from to = apply (singleton from to)
 isOneToOne :: Ord b => Map a b -> Bool
 isOneToOne = not . isNub . elems
 
--- | Attempt to apply a mapping to something, 
--- NOT a substituion within something,
--- this only attempts to replace the very top level thing it is given.
--- Returns the original argument back if the mapping fails.
-try :: Ord t => Map t t -> t -> t
-try (MapWrap map) term = DMap.findWithDefault term term map
-
 -- | Unifies two substitution maps into a single substitution
--- which does both. Can fail with 'mzero'.
-union :: (Ord a, Eq b, MonadPlus m) => Map a b -> Map a b -> m (Map a b)
+-- which does both. Can fail if the two substitutions are conflicting.
+union :: (Ord a, Eq b, MonadFailure m) => Map a b -> Map a b -> m (Map a b)
 union (MapWrap map1) (MapWrap map2) = do
-  guard (and $ DMap.elems inter)
+  Fail.unless (and $ DMap.elems inter)
   return 
     $ MapWrap
     $ DMap.union map1 map2
@@ -55,7 +50,7 @@ union (MapWrap map1) (MapWrap map2) = do
 -- | Unifies two substitution maps, which themselves are the result of
 -- potentially failing computations. The whole thing fails if either
 -- computation fails, or the unioning fails.
-unionM :: (Ord a, Eq b, MonadPlus m) => 
+unionM :: (Ord a, Eq b, MonadFailure m) => 
   m (Map a b) -> m (Map a b) -> m (Map a b)
 unionM mm1 mm2 = do
   m1 <- mm1
@@ -63,8 +58,8 @@ unionM mm1 mm2 = do
   union m1 m2
   
 -- | Fold 'union' over a list.
-unions :: (Ord a, Eq b, MonadPlus m) => [Map a b] -> m (Map a b)
-unions = foldl1M union
+unions :: (Ord a, Eq b, MonadFailure m) => [Map a b] -> m (Map a b)
+unions = foldrM union empty 
 
 instance (HasVariables a, HasVariables b, Var a ~ Var b) => 
     HasVariables (Map a b) where
@@ -73,6 +68,7 @@ instance (HasVariables a, HasVariables b, Var a ~ Var b) =>
 
 instance Empty (Map a b) where
   empty = MapWrap DMap.empty
+
 
 -- * 'Data.Map' functions
 
@@ -90,4 +86,8 @@ fromList = MapWrap . DMap.fromList
 
 toList :: Map a b -> [(a, b)]
 toList = DMap.toList . unwrapMap
+
+mapKeys :: Ord k2 => (k1 -> k2) -> Map k1 a -> Map k2 a
+mapKeys f = MapWrap . DMap.mapKeys f . unwrapMap
+
 

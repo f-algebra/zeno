@@ -7,7 +7,6 @@ import Zeno.Prelude
 import Zeno.Traversing
 import Zeno.Unification 
 import Zeno.Name ( Name )
-import Zeno.Unique ( MonadUnique )
 import Zeno.Var ( ZTerm, ZVar )
 import Zeno.Type ( typeOf )
 import Zeno.Context ( Context (..) )
@@ -16,18 +15,16 @@ import qualified Zeno.Substitution as Substitution
 import qualified Zeno.Var as Var
 import qualified Zeno.Term as Term
 import qualified Zeno.Evaluation as Eval
--- import qualified Zeno.Engine.Checker as Checker
+import qualified Zeno.Engine.Checker as Checker
 import qualified Zeno.Context as Context
+import qualified Control.Failure as Fail
 import qualified Data.Map as Map
 
--- | Attempts to factor a value context out of a given term,
--- returns 'mzero' on failure
-value :: (MonadUnique m, MonadPlus m) => ZTerm -> m ZTerm
+-- | Attempts to factor a value context out of a given term
+value :: (MonadUnique m, MonadFailure m) => ZTerm -> m ZTerm
 value old_term = do
   -- Try to find a value context to factor out
-  mzero
-  value_cxt <- undefined 
-    -- Checker.guessContext old_term
+  value_cxt <- Checker.guessContext old_term
 
   -- Declare a new variable for the function we are creating
   new_fix_var <- 
@@ -61,7 +58,6 @@ value old_term = do
   -- Return this new function, with the arguments reapplied 
   -- and within the context
   return
-    $ trace ("MEEP:\n" ++ show new_fix_in_context ++ "\napplied to\n" ++ show old_body ++ "\ngives\n" ++ show replaced ++ "\nafter eval\n" ++ show new_body ++ "\nafter factoring\n" ++ show factored_body ++ "\neventually\n" ++ show new_fix)
     $ Context.fill value_cxt
     $ Term.unflattenApp 
     $ (new_fix : args)

@@ -4,7 +4,6 @@ module Zeno.Tests.Context (
 
 import Prelude ()
 import Zeno.Prelude
-import Zeno.Engine.Simplification ( floatLazyArgsOut )
 
 import qualified Zeno.Term as Term
 import qualified Zeno.Context as Context
@@ -22,34 +21,43 @@ test_innermost =
   Test.label "innermost" 
     $ Test.run $ do
   Test.loadPrelude
+  
+  Test.newVar "n" "nat"
+  Test.newVar "m" "nat"
   Test.newVar "xs" "list"
   var_ys <- Test.newVar "ys" "list"
-  let floatedTerm = floatLazyArgsOut <=< Test.term
-  
-  rr_xs <- floatedTerm "rev (rev xs)"
-  rapp_xs_ys <- floatedTerm "rev (app xs ys)"
-  r_ys <- floatedTerm "rev ys"
-  r_xs <- floatedTerm "rev xs"
-  app_xs_ys <- floatedTerm"app xs ys"
   
   -- Attempt to split "rev (rev xs)" into
   -- ("rev _", "rev xs")
+  rr_xs <- Test.term "rev (rev xs)"
+  cxt1_ys <- Test.term "rev ys"
+  r_xs <- Test.term "rev xs"
+  
   let (cxt1, r_xs') = Context.innermost rr_xs
-  
-  -- Attempt to split "rev (app xs ys)" into 
-  -- ("rev _", "app xs ys")
-  let (cxt2, app_xs_ys') = Context.innermost rapp_xs_ys
-  
-  -- Check that the inner terms are correct
+      cxt1_ys' = Context.fill cxt1 (Term.Var var_ys)
+      
   let test1 = Test.assertAlphaEq r_xs' r_xs
-      test2 = Test.assertAlphaEq app_xs_ys' app_xs_ys
+      test2 = Test.assertAlphaEq cxt1_ys' cxt1_ys
   
-  -- Check that the outer context of both is "rev _"
-  -- by filling it with "ys" and seeing if it is equal to "rev ys"
-  let cxt1_ys = Context.fill cxt1 (Term.Var var_ys)
-      cxt2_ys = Context.fill cxt2 (Term.Var var_ys)
-      test3 = Test.assertAlphaEq cxt1_ys r_ys
-      test4 = Test.assertAlphaEq cxt2_ys r_ys
   
-  return $ Test.list [test1, test2, test3, test4]
+  -- Attempt to split this app-rev-app example
+  app_rev_app <- Test.term "app (rev (app xs (cons n nil))) (cons m nil)"
+  cxt2_ys <- Test.term "app (rev ys) (cons m nil)"
+  app_xs_n <- Test.term "app xs (cons n nil)"
+  
+  let (cxt2, app_xs_n') = Context.innermost app_rev_app
+      cxt2_ys' = Context.fill cxt2 (Term.Var var_ys)
+      
+  let test3 = Test.assertAlphaEq app_xs_n' app_xs_n
+      test4 =  Test.assertAlphaEq cxt2_ys' cxt2_ys
+  
+
+  -- Check that "rev ys" splits into "_" and "rev ys"
+  -- to test whether it correctly returns null contexts
+  r_ys <- Test.term "rev ys"
+  let (cxt_3, r_ys') = Context.innermost r_ys
+      test5 = Test.assert (Context.null cxt_3)
+      test6 = Test.assertAlphaEq r_ys r_ys'
+  
+  return $ Test.list [test1, test2, test3, test4, test5, test6]
 

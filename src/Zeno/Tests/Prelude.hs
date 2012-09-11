@@ -24,3 +24,4 @@ test_isNub = TestList $
   [ testCase $ isNub [0, 2, 1]
   , testCase $ not $ isNub [3, 1, 2, 1, 5] 
   , testCase $ isNub ([] :: [Int]) ]
+

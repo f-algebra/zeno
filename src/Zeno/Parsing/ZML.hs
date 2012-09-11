@@ -113,7 +113,7 @@ parseRType (Type.Fun arg res) =
   Type.Fun <$> parseRType arg <*> parseRType res
   
 parseRTerm :: RTerm -> Parser ZTerm
-parseRTerm = parse >=> Term.reannotate
+parseRTerm = parse
   where
   parse :: RTerm -> Parser ZTerm
   parse (Term.Var var) = 

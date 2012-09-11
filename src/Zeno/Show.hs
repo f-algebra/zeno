@@ -40,6 +40,7 @@ instance Show (Term a) => Show (Equation a) where
 instance Show (Term a) => Show (Clause a) where
   show = intercalate " ->\n  " . map show . Logic.flatten
 
+  {-
 type ShowTerm a = ReaderT Int (State (Map String Int, Map a String))
 
 runShowTerm :: Ord a => ShowTerm a b -> b
@@ -67,7 +68,7 @@ showVar var = do
           return new_name
   where
   var_s = show var
-  {-
+  
 bindVar :: (Ord a, Show a) => a -> ShowTerm a b -> ShowTerm a b
 bindVar var = local $ second $ updateMaps
   where
@@ -117,11 +118,11 @@ showTerm (Term.Cse srt lhs alts) = indent $ do
       srt_s | Term.isFoldCase srt = ""
             | otherwise = "?"
   return $ i ++ srt_s ++ "case " ++ lhs'' ++ " of" ++ alts'
-  -}
+  
 instance Show a => Show (Term.CaseSort a) where
   show Term.SplitCase = "<>"
   show (Term.FoldCase name fix) = "<" ++ show name ++ ", " ++ show fix ++ ">"
-  
+  -}
 instance (Ord a, Show a) => Show (Alt a) where
   -- show = runShowTerm . showAlt
   show (Term.Alt con vars term) = 
@@ -165,7 +166,7 @@ instance (Ord a, Show a) => Show (Term a) where
           | otherwise = vars
     
     vars_s = intercalate " " (map show vars')
-    rhs_s | is_eta_case = show (Term.caseOfSort rhs) ++ show (Term.caseOfAlts rhs)
+    rhs_s | is_eta_case = show (Term.caseOfAlts rhs)
           | otherwise = show rhs
   
   show (Term.Fix f t) =

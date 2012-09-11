@@ -1,6 +1,5 @@
 module Zeno.Name (
-  Name, MonadUnique, Unique, 
-  Has (..),
+  Name, Has (..),
   new, invent, declare, label, relabel,
   global, unsafe,
   uniqueId,
@@ -8,14 +7,17 @@ module Zeno.Name (
 
 import Prelude ()
 import Zeno.Prelude hiding ( get )
-import Zeno.Unique ( Unique, MonadUnique )
-import qualified Zeno.Unique as Unique
+
+import qualified Control.Unique as Unique
 
 data Name = Name  { uniqueId :: !Unique,
                     label :: !String }
 
+-- | If something has a 'Name'.
 class Has a where
   get :: a -> Name
+  
+  -- | Generate a new underlying 'Unique' value for this object's 'Name'.
   freshen :: MonadUnique m => a -> m a
 
 instance Eq Name where
@@ -56,5 +58,5 @@ relabel :: String -> Name -> Name
 relabel lbl (Name id _) = Name id lbl
   
 instance Empty Name where
-  empty = Name mempty "NULL"
+  empty = Name empty "NULL"
 
