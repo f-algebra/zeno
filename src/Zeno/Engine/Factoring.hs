@@ -32,6 +32,8 @@ isDeforestedTerm _ = False
 value :: (MonadUnique m, MonadFailure m) => ZTerm -> m ZTerm
 value old_term = 
     assert (isDeforestedTerm old_term) $ do
+  
+  Fail.unless (all Term.isVar args)
     
   -- Try to find a value context to factor out
   value_cxt <- Checker.guessContext old_term
@@ -95,7 +97,7 @@ value old_term =
     
 -- | Factor any free-patterns out of a term
 pattern :: MonadUnique m => ZTerm -> m ZTerm
-pattern old_term = 
+pattern old_term =
     assert (isDeforestedTerm old_term) $ do
     
   -- Put every free pattern in the term at the top level of the term

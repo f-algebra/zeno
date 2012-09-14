@@ -45,10 +45,11 @@ onetest = Test.execute
   Test.newVar "xs" "list"
   
   count_app <- Test.term "count n (app xs (cons m nil))"
-  count_app' <- Deforester.simplify count_app
+  count_app' <- Simplification.floatLazyArgsOut count_app
+  count_app'' <- Deforester.simplify count_app'
   
   return
-    $ Test.assert $ count_app' == undefined
+    $ Test.assert $ count_app'' /= count_app'
   
 
 runZeno :: Zeno a -> IO a

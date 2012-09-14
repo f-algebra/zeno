@@ -8,6 +8,7 @@ import Zeno.Core ( Zeno )
 import Zeno.Var ( ZTerm )
 import Zeno.Engine.Deforester ( simplify )
 
+import qualified Control.Failure as Fail
 import qualified Zeno.Term as Term
 import qualified Zeno.Testing as Test
 

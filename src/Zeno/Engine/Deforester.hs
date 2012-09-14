@@ -40,21 +40,22 @@ simplify = mapWithinM simp
     | otherwise = do
         floated <- floatLazyArgsOut term
         
-        deforested <- Fail.catchWith floated
+        deforested <- Fail.catchWith floated 
           $ deforest floated
         
         p_factored <- Factoring.pattern deforested
-          
-        v_factored <- flip Term.mapCaseBranchesM term $ \_ b_term -> do
-          Fail.catchWith b_term 
-            $ Factoring.value (traceMe "hi" b_term) 
         
-        return 
-        --  $ trace ("\n!!!!!\n" ++ show floated ++ "\nDEF:\n" ++ show deforested
-          --    ++ "\nPFAC:\n" ++ show p_factored ++ "\nVFAC:\n" ++ show v_factored) 
-          $ v_factored
+        v_factored <- flip Term.mapCaseBranchesM p_factored 
+          $ \_ b_term ->
+            Fail.catchWith b_term 
+              $ Factoring.value b_term
 
-      
+        return
+      --    $ trace ("\n!!!!!\n" ++ show floated ++ "\nDEF:\n" ++ show deforested
+        --    ++ "\nPFAC:\n" ++ show p_factored ++ "\nVFAC:\n" ++ show v_factored)
+          $ v_factored  
+
+          
 deforest :: forall m . (MonadUnique m, MonadFailure m) => 
   ZTerm -> m ZTerm
 deforest term = do
@@ -85,12 +86,10 @@ deforest term = do
   -- Apply every free variable as an argument to our new function
   let new_term = Term.unflattenApp (new_fix : map Term.Var free_vars)
   
-  -- Only return the new term is deforestation has actually changed,
-  -- anything, otherwise we are just refreshing variables unnecessarily.
-  return $ 
-    if new_term `alphaEq` term
-    then term
-    else new_term
+  -- If nothing has changed then deforestation has obviously failed
+  Fail.when (new_term `alphaEq` term)
+  
+  return new_term
   where
   -- The inner_term we will unfold to perform deforestation
   -- and the context that surrounds it
@@ -98,8 +97,8 @@ deforest term = do
   (inner_func : inner_args) = Term.flattenApp inner_term 
   Term.Fix inner_fix_var inner_fix_body = inner_func
   
-  free_vars = Set.toList 
-    $ concatMap freeVars inner_args
+  free_vars = nubOrd 
+    $ concatMap (Set.toList . freeVars) inner_args
   arg_types = map typeOf free_vars
   
   -- The type of the new function we are creating

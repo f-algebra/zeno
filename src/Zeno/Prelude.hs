@@ -183,7 +183,11 @@ minimalBy ord xs = y : (takeWhile ((== EQ) . ord y) ys)
   where (y:ys) = sortBy ord xs
 
 nubOrd :: Ord a => [a] -> [a]
-nubOrd = Set.toList . Set.fromList
+nubOrd = reverse . fst . foldl nubby ([], Set.empty)
+  where
+  nubby (acc, set) x 
+    | x `Set.member` set = (acc, set)
+    | otherwise = (x:acc, Set.insert x set)
 
 isNub :: forall a . Ord a => [a] -> Bool
 isNub = isJust . foldrM dupM Set.empty
