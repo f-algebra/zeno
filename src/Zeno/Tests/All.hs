@@ -13,8 +13,6 @@ import qualified Zeno.Tests.Engine.Checker as Checker
 import qualified Zeno.Tests.Prelude as Prelude
 import qualified Zeno.Testing as Test
 
-import qualified Test.HUnit.Text as HUnit
-
 tests = Test.list
   [ Prelude.tests
   , Substitution.tests
@@ -27,7 +25,5 @@ tests = Test.list
   , Deforester.tests ]
   
 runTests :: IO ()
-runTests = do
-  HUnit.runTestTT tests
-  return ()
+runTests = Test.execute tests
 

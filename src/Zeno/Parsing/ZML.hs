@@ -133,10 +133,8 @@ parseRTerm = parse
   parse (Term.Cse _ rterm ralts) = do
     zterm <- parse rterm
     zalts <- mapM parseAlt ralts
-    return (Term.Cse sort_err zterm zalts)
+    return (Term.Cse Nothing zterm zalts)
     where
-    sort_err = error "Parsed case-split with undefined sort"
-    
     parseAlt :: RAlt -> Parser ZAlt
     parseAlt (Term.Alt rcon rargs rterm) = do
       Just (Term.Var con_var) <- Zeno.lookupTerm (Raw.varName rcon)

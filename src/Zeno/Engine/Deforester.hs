@@ -28,6 +28,9 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Test.HUnit as HUnit
 
+-- | Perform our full simplification algorithm on a term.
+-- Does deforestation, followed by pattern factoring,
+-- then value factoring.
 simplify :: forall m . MonadUnique m => ZTerm -> m ZTerm
 simplify = mapWithinM simp
   where
@@ -35,14 +38,21 @@ simplify = mapWithinM simp
   simp term 
     | not (Var.isFunctionCall term) = return term
     | otherwise = do
-        term2 <- floatLazyArgsOut term
-        term3 <- Fail.catchWith term2
-          $ deforest term2
+        floated <- floatLazyArgsOut term
         
-        term4 <- Fail.catchWith term3
-          $ Factoring.value term3
+        deforested <- Fail.catchWith floated
+          $ deforest floated
         
-        return term4
+        p_factored <- Factoring.pattern deforested
+          
+        v_factored <- flip Term.mapCaseBranchesM term $ \_ b_term -> do
+          Fail.catchWith b_term 
+            $ Factoring.value (traceMe "hi" b_term) 
+        
+        return 
+        --  $ trace ("\n!!!!!\n" ++ show floated ++ "\nDEF:\n" ++ show deforested
+          --    ++ "\nPFAC:\n" ++ show p_factored ++ "\nVFAC:\n" ++ show v_factored) 
+          $ v_factored
 
       
 deforest :: forall m . (MonadUnique m, MonadFailure m) => 

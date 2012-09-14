@@ -16,6 +16,7 @@ tests = Test.label "Deforester"
   [ test_deforestSimple
   , test_deforestHOF
   , test_valueFactoring
+  , test_patternFactoring
   ]
   
 assertSimpEq :: ZTerm -> ZTerm -> Zeno Test.Test
@@ -60,8 +61,9 @@ test_deforestHOF =
   
   
 -- | Test simplifications which require value factoring
+-- "rev (rev xs)" == "xs"
 test_valueFactoring =
-  Test.label "Testing value factoring"
+  Test.label "Value factoring"
     $ Test.run $ do
   Test.loadPrelude
   
@@ -69,4 +71,32 @@ test_valueFactoring =
   revrev <- Test.term "rev (rev xs)"
   
   assertSimpEq revrev (Term.Var var_xs)
+  
+-- | Test simplifications which require pattern factoring
+-- "count n (xs ++ [m])" == "case n == m of { ... }"
+-- "count n (rev xs)" == "count n xs"
+test_patternFactoring =
+  Test.label "Pattern factoring"
+    $ Test.run $ do
+  Test.loadPrelude
+  
+  Test.newVar "n" "nat"
+  Test.newVar "m" "nat"
+  Test.newVar "xs" "list"
+  
+  count_app <- Test.term "count n (app xs (cons m nil))"
+  count_app2 <- Test.term count_app2_def
+  test1 <- assertSimpEq count_app count_app2
+  
+  count <- Test.term "count n xs"
+  count_rev <- Test.term "count n (rev xs)"
+  test2 <- assertSimpEq count_rev count
 
+  return
+    $ Test.list [test1, test2]
+  where
+  count_app2_def = unlines $
+    [ "case (eq n m) of "
+    , "    true -> succ (count n xs)"
+    , "  | false -> count n xs" ]
+  

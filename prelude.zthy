@@ -1,0 +1,125 @@
+type bool = true | false;
+type nat = 0 | succ nat;
+type list = nil | cons nat list;
+
+let rec (add : nat -> nat -> nat) = 
+  fun (x : nat) (y : nat) -> 
+    case x of
+      0 -> y
+    | succ x' -> succ (add x' y);
+    
+let rec (mul : nat -> nat -> nat) = 
+  fun (x : nat) (y : nat) ->
+    case x of
+    | 0 -> 0
+    | succ x' -> add y (mul x' y);
+  
+let rec (app : list -> list -> list) = 
+  fun (xs : list) (ys : list) -> 
+    case xs of
+      nil -> ys
+    | cons z zs -> cons z (app zs ys);
+    
+let rec (rev : list -> list) = 
+  fun (xs : list) ->
+    case xs of
+      nil -> nil
+    | cons y ys -> app (rev ys) (cons y nil);
+    
+let rec (leq : nat -> nat -> bool) = 
+  fun (x : nat) (y : nat) -> 
+    case x of
+      0 -> true
+    | succ x' -> 
+        case y of
+          0 -> false
+        | succ y' -> leq x' y';
+        
+let rec (filter : (nat -> bool) -> list -> list) =
+  fun (p : (nat -> bool)) (xs : list) ->
+    case xs of
+    | nil -> nil
+    | cons y ys -> 
+        case (p y) of
+        | true -> cons y (filter p ys)
+        | false -> filter p ys;
+   
+let rec (map : (nat -> nat) -> list -> list) =
+  fun (f : (nat -> nat)) (xs : list) ->
+    case xs of
+    | nil -> nil
+    | cons y ys -> 
+        cons (f y) (map f ys);
+        
+let rec (eq : nat -> nat -> bool) =
+  fun (x : nat) (y : nat) ->
+    case x of
+    | 0 ->
+        (case y of
+        | 0 -> true
+        | succ y' -> false)
+    | succ x' ->
+        case y of 
+        | 0 -> false
+        | succ y' -> eq y' x';
+        
+let rec (len : list -> nat) = 
+  fun (xs : list) ->
+    case xs of
+    | nil -> 0
+    | cons y ys -> succ (len ys);
+    
+let rec (ins : nat -> list -> list) =
+  fun (x : nat) (xs : list) -> 
+    case xs of
+    | nil -> cons x nil
+    | cons y ys -> 
+        case (leq x y) of
+        | true -> cons x xs
+        | false -> cons y (ins x ys);
+        
+let rec (isort : list -> list) = 
+  fun (xs : list) ->
+    case xs of
+    | nil -> nil
+    | cons y ys -> ins y (isort ys);
+    
+let rec (ord : list -> bool) = 
+  fun (xs : list) ->
+    case xs of
+    | nil -> true
+    | cons y ys -> 
+        case ys of
+        | nil -> true
+        | cons z zs -> 
+            case leq y z of
+            | true -> ord ys
+            | false -> false;
+            
+let rec (drop : nat -> list -> list) = 
+  fun (n : nat) (xs : list) ->
+    case n of
+    | 0 -> xs
+    | succ m -> 
+        case xs of
+        | nil -> nil
+        | cons y ys -> drop m ys;
+    
+let rec (elem : nat -> list -> bool) = 
+  fun (n : nat) (xs : list) ->
+    case xs of
+    | nil -> false
+    | cons y ys -> 
+        case (eq n y) of
+        | true -> true
+        | false -> elem n ys;
+
+let rec (count : nat -> list -> nat) = 
+  fun (n : nat) (xs : list) -> 
+    case xs of
+      nil -> 0
+    | cons y ys -> 
+        case (eq n y) of
+          true -> succ (count n ys)
+        | false -> count n ys;
+  

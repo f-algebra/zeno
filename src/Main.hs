@@ -12,6 +12,7 @@ import qualified Zeno.Engine.Deforester as Deforester
 import qualified Zeno.Engine.Simplification as Simplification
 import qualified Zeno.Engine.Factoring as Factoring
 
+import qualified Zeno.Testing as Test
 import qualified Zeno.Evaluation as Eval
 import qualified Zeno.Term as Term
 import qualified Zeno.Var as Var
@@ -35,10 +36,26 @@ zenoState = unsafePerformIO (newIORef empty)
 test :: IO ()
 test = runTests
 
+onetest :: IO ()
+onetest = Test.execute
+    $ Test.run $ do
+  Test.loadPrelude
+  Test.newVar "n" "nat"
+  Test.newVar "m" "nat"
+  Test.newVar "xs" "list"
+  
+  count_app <- Test.term "count n (app xs (cons m nil))"
+  count_app' <- Deforester.simplify count_app
+  
+  return
+    $ Test.assert $ count_app' == undefined
+  
+
 runZeno :: Zeno a -> IO a
 runZeno zeno = 
   atomicModifyIORef zenoState (flipPair . runState zeno)
 
+  
 flush :: IO ()
 flush = do
   output <- runZeno Zeno.flush

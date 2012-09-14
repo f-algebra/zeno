@@ -55,7 +55,7 @@ instance Ord ZVar where
   
 instance Show ZVar where
   show var 
-    | isConstructor var = show (name var)
+    | True || isConstructor var = show (name var)
     | otherwise = show (Name.uniqueId (Name.get var))
   
 instance Name.Has ZVar where

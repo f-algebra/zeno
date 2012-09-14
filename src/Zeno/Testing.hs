@@ -1,5 +1,5 @@
 module Zeno.Testing (
-  Test,
+  Test, execute,
   run, term, loadPrelude, newVar,
   label, list, assert, assertAlphaEq
 ) where
@@ -21,6 +21,15 @@ import qualified Test.HUnit as HUnit
 
 type Test = HUnit.Test
 
+prelude :: String
+prelude = unsafePerformIO
+  $ readFile "prelude.zthy"
+
+execute :: Test -> IO ()
+execute test = do
+  HUnit.runTestTT test
+  return ()
+  
 run :: HUnit.Testable t => Zeno t -> Test
 run = HUnit.test . flip evalState empty
 
@@ -54,56 +63,11 @@ assertEq :: ZTerm -> ZTerm -> a -> a
 assertEq t1 t2 x = x
  
 loadPrelude :: Zeno ()
-loadPrelude = do
-  mapM_ process (ZML.readLines prelude)
+loadPrelude =
+  mapM_ process 
+    $ ZML.readLines prelude
   where
   process ("let", arg) = ZML.readBinding arg
   process ("type", arg) = ZML.readTypeDef arg
  
-  prelude :: String
-  prelude = unlines
-    [ "type bool = true | false;"
-    , "type nat = 0 | succ nat;"
-    , "type list = nil | cons nat list;"
-    
-    , "let rec (add : nat -> nat -> nat) = "
-    , "  fun (x : nat) (y : nat) -> "
-    , "    case x of"
-    , "      0 -> y"
-    , "    | succ x' -> succ (add x' y);"
-    
-    , "let rec (mul : nat -> nat -> nat) =" 
-    , "  fun (x : nat) (y : nat) ->"
-    , "    case x of"
-    , "      0 -> 0"
-    , "    | succ x' -> add y (mul x' y);"
-   
-    , "let rec (app : list -> list -> list) =" 
-    , "  fun (xs : list) (ys : list) -> "
-    , "    case xs of"
-    , "      nil -> ys"
-    , "    | cons z zs -> cons z (app zs ys);"
-    
-    , "let rec (rev : list -> list) = "
-    , "  fun (xs : list) ->"
-    , "    case xs of"
-    , "      nil -> nil"
-    , "    | cons y ys -> app (rev ys) (cons y nil);" 
-    
-    , "let rec (map : (nat -> nat) -> list -> list) ="
-    , "  fun (f : nat -> nat) (xs : list) ->"
-    , "    case xs of"
-    , "      nil -> nil"
-    , "    | cons y ys -> cons (f y) (map f ys);"  
-    
-    , "let rec (filter : (nat -> bool) -> list -> list) ="
-    , "  fun (p : nat -> bool) (xs : list) ->"
-    , "    case xs of"
-    , "      nil -> nil"
-    , "    | cons y ys -> "
-    , "        case (p y) of"
-    , "          true -> cons y (filter p ys)"
-    , "        | false -> filter p ys;"
-
-    ]
 

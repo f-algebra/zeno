@@ -6,7 +6,7 @@ module Zeno.Term (
   flattenApp, unflattenApp, flattenLam, unflattenLam,
   function, isNormal, freeCaseTags, isFixTerm, 
   toTermMap, mapCaseBranchesM, foldCaseBranchesM,
-  stripLambdas, etaReduce, setFreeTags,
+  stripLambdas, etaReduce, altPattern
 ) where
 
 import Prelude ()
@@ -27,8 +27,8 @@ data Term a
   | App !(Term a) !(Term a)
   | Lam !a !(Term a)
   | Fix !a !(Term a)
-  | Cse     { -- | This is used for evaluation
-              caseOfTag :: a,
+  | Cse     { -- | This "tag" is used for evaluation
+              caseOfTag :: Maybe a,
               caseOfTerm :: !(Term a),
               caseOfAlts :: ![Alt a] }
   deriving ( Eq, Ord, Functor, Foldable, Traversable )
@@ -133,26 +133,19 @@ isFixTerm = isFix . head . flattenApp
 isNormal :: Ord a => Term a -> Bool
 isNormal = not . anyWithin isFix
 
+altPattern :: Alt a -> Term a
+altPattern (Alt con vars _) = 
+  unflattenApp $ map Var (con : vars)
+
 freeCaseTags :: Ord a => Term a -> Set a
 freeCaseTags (App t1 t2) = freeCaseTags t1 `mappend` freeCaseTags t2
 freeCaseTags (Lam _ t) = freeCaseTags t
-freeCaseTags (Cse tag term alts) = 
-  Set.insert tag inner
+freeCaseTags (Cse mby_tag term alts)
+  | Just tag <- mby_tag = Set.insert tag inner
+  | otherwise = inner
   where
   inner = concatMap freeCaseTags (term : map altTerm alts)
 freeCaseTags _ = mempty
-
-setFreeTags :: a -> Term a -> Term a
-setFreeTags new_tag = setFree
-  where
-  setFree (App t1 t2) = App (setFree t1) (setFree t2)
-  setFree (Lam x t) = Lam x (setFree t)
-  setFree (Cse _ term alts) = 
-    Cse new_tag (setFree term) (map setFreeA alts)
-  setFree other = other
-    
-  setFreeA (Alt con vars term) =
-    Alt con vars (setFree term)
     
 fromVar :: Term a -> a
 fromVar (Var v) = v

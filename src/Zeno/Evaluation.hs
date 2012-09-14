@@ -52,11 +52,30 @@ clearAllTags :: ZTerm -> ZTerm
 clearAllTags = mapWithin clear
   where
   clear (Term.Cse _ term alts) = 
-    Term.Cse empty term alts
+    Term.Cse Nothing term alts
   clear other = other
   
-addUnrolled :: ZVar -> Eval a -> Eval a
-addUnrolled var = local $ \env ->
+-- TODO this needs to be more discriminating, w.r.t. wf-orderings
+-- and termination
+setFreeTags :: ZVar -> ZTerm -> ZTerm
+setFreeTags new_tag = setFree
+  where
+  setFree (Term.App t1 t2) = Term.App (setFree t1) (setFree t2)
+  setFree (Term.Lam x t) = Term.Lam x (setFree t)
+  setFree (Term.Cse _ term alts) 
+    | Term.isVar term = Term.Cse (Just new_tag) term' alts' 
+    | otherwise = Term.Cse Nothing term' alts'
+    where
+    term' = setFree term
+    alts' = map setFreeA alts
+  setFree other = other
+    
+  setFreeA (Term.Alt con vars term) =
+    Term.Alt con vars (setFree term)
+  
+addUnrolled :: Maybe ZVar -> Eval a -> Eval a
+addUnrolled Nothing = id
+addUnrolled (Just var) = local $ \env ->
   env { unrolledFixes = Set.insert var (unrolledFixes env) }
 
 isUnrolled :: ZVar -> Eval Bool
@@ -110,7 +129,7 @@ eval other = do
     else do
       unrolled_fix <- Substitution.replace
         (Term.Var fix_var) fix_term fix_rhs
-      let tagged_fix = Term.setFreeTags fix_var unrolled_fix
+      let tagged_fix = setFreeTags fix_var unrolled_fix
       unrolled <- evalApp (tagged_fix : args)
       if fix_var `Set.member` Term.freeCaseTags unrolled
       then did_nothing
