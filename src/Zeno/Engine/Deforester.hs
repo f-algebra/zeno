@@ -66,7 +66,7 @@ deforest term = do
   
   -- We then push the outer context down into every branch 
   cxt_applied <- Context.pushInside outer_cxt unrolled
-  
+  1
   -- Create a new function variable for the new function 
   -- we are inventing
   fun_var <- Var.invent fun_type Var.Universal

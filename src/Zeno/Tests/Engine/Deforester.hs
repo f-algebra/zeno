@@ -63,15 +63,23 @@ test_deforestHOF =
   
 -- | Test simplifications which require value factoring
 -- "rev (rev xs)" == "xs"
+-- "len (rev xs)" == "len xs"
 test_valueFactoring =
   Test.label "Value factoring"
     $ Test.run $ do
   Test.loadPrelude
-  
   var_xs <- Test.newVar "xs" "list"
-  revrev <- Test.term "rev (rev xs)"
   
-  assertSimpEq revrev (Term.Var var_xs)
+  revrev <- Test.term "rev (rev xs)"
+  test1 <- assertSimpEq revrev (Term.Var var_xs)
+  
+  lenrev <- Test.term "len (rev xs)"
+  len <- Test.term "len xs"
+  test2 <- assertSimpEq lenrev len
+  
+  return
+    $ Test.list [test1, test2]
+    
   
 -- | Test simplifications which require pattern factoring
 -- "count n (xs ++ [m])" == "case n == m of { ... }"
