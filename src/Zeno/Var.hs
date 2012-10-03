@@ -1,16 +1,17 @@
 -- | The representation of variables inside Zeno.
-module Zeno.Var (
+module Zeno.Var 
+(
   ZVar (name, sort), ZVarSort (..),
   ZDataType, ZType, ZTerm, ZAlt,
   ZClause, ZTermMap, ZEquation,
   setType, caseSplit, relabel,
   isConstructor, isConstructorTerm,
-  isUniversal, universalVariables, isFunctionCall,
-  new, declare, invent, clone, generalise,
-  mapUniversal, foldUniversal,
+  isUniversal, isFunctionCall,
+  new, declare, invent, clone,
   instantiateTerm, recursiveArguments,
   isDestructible, isHNF, magic
-) where
+)
+where
 
 import Prelude ()
 import Zeno.Prelude hiding ( sort )
@@ -109,7 +110,7 @@ instantiateTerm :: MonadUnique m => ZTerm -> m ZTerm
 instantiateTerm term
   | Type.isVar (typeOf term) = return term
 instantiateTerm term = do
-  new_arg <- invent arg_type Universal
+  new_arg <- invent arg_type
   instantiateTerm (Term.App term (Term.Var new_arg))
   where
   Type.Fun arg_type _ = typeOf term
@@ -136,9 +137,6 @@ recursiveArguments term
   typ = typeOf term
   args = tail (Term.flattenApp term)
 
-generalise :: MonadUnique m => ZTerm -> m ZVar
-generalise term = invent (typeOf term) Universal
-
 new :: MonadUnique m => Maybe String -> ZType -> ZVarSort -> m ZVar
 new label typ srt = do
   name <- Name.new label
@@ -152,30 +150,14 @@ magic lbl = Var (Name.unsafe lbl) empty Universal
 declare :: MonadUnique m => String -> ZType -> ZVarSort -> m ZVar
 declare = new . Just  
   
-invent :: MonadUnique m => ZType -> ZVarSort -> m ZVar
-invent = new Nothing
+invent :: MonadUnique m => ZType -> m ZVar
+invent typ = new Nothing typ Universal
 
 clone :: MonadUnique m => ZVar -> m ZVar
 clone var = declare (show (name var)) (varType var) (sort var)
 
 relabel :: String -> ZVar -> ZVar
 relabel lbl var = var { name = Name.relabel lbl (name var) }
-
-universalVariables :: Foldable f => f ZVar -> Set ZVar
-universalVariables = Set.filter isUniversal . Set.fromList . toList
-
-mapUniversal :: WithinTraversable ZTerm a => (ZVar -> ZVar) -> a -> a
-mapUniversal f = mapWithin mapVars
-  where 
-  mapVars (Term.Var x) = Term.Var (f x)
-  mapVars t = t
-  
-foldUniversal :: (WithinTraversable ZTerm a, Monoid m) =>
-  (ZVar -> m) -> a -> m
-foldUniversal f = foldWithin foldVars
-  where
-  foldVars (Term.Var x) = f x
-  foldVars _ = mempty
   
   
 -- * I think the instances below can be abstracted away from 'ZVar'

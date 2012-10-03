@@ -28,6 +28,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Test.HUnit as HUnit
 
+
 -- | Perform our full simplification algorithm on a term.
 -- Does deforestation, followed by pattern factoring,
 -- then value factoring.
@@ -66,10 +67,10 @@ deforest term = do
   
   -- We then push the outer context down into every branch 
   cxt_applied <- Context.pushInside outer_cxt unrolled
-  1
+  
   -- Create a new function variable for the new function 
   -- we are inventing
-  fun_var <- Var.invent fun_type Var.Universal
+  fun_var <- Var.invent fun_type
   
   -- Apply 'deforestBranch' down each branch of the unrolled
   -- innermost function which has had the context pushed inside it, 
@@ -180,7 +181,7 @@ deforest term = do
     makeGenVar :: ZTerm -> m ZVar
     makeGenVar rec_call =
       assert (typeOf rec_call == typeOf inner_term)
-      $ Var.invent (typeOf rec_call) Var.Universal
+      $ Var.invent (typeOf rec_call)
       
     -- Is a term a recursive call to our original function?
     isRecCall :: ZTerm -> Bool

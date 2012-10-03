@@ -42,8 +42,7 @@ value old_term =
     $ Term.unflattenApp (old_fix_term : args)
   
   -- Declare a new variable for the function we are creating
-  new_fix_var <- 
-    Var.invent (Context.fillType value_cxt) Var.Universal
+  new_fix_var <- Var.invent (Context.fillType value_cxt)
   
   -- This term will replace every instance of the old fix var in
   -- the unrolled term body. It is the new fix var surrounded by the context
